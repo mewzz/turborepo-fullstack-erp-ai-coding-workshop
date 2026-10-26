@@ -34,12 +34,16 @@ async function main() {
 
   const passwordHash = await hashPassword(DEMO_PASSWORD);
   for (const user of demoUsers) {
-    const storeId = user.store ? (storesByCode.get(user.store) ?? null) : null;
-    const data = { name: user.name, role: user.role, storeId };
+    let storeId: string | null = null;
+    if (user.store) {
+      storeId = storesByCode.get(user.store) ?? null;
+      if (!storeId) throw new Error(`Unknown store code "${user.store}" for ${user.email}`);
+    }
+    const data = { name: user.name, role: user.role, storeId, passwordHash };
     await prisma.user.upsert({
       where: { email: user.email },
       update: data,
-      create: { email: user.email, passwordHash, ...data },
+      create: { email: user.email, ...data },
     });
   }
   console.log(
