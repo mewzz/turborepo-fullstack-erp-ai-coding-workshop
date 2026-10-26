@@ -10,10 +10,21 @@ import { Reflector } from '@nestjs/core';
 import type { Role } from '@erp/contracts';
 import type { Env } from '../config/env.js';
 import { PrismaService } from '../database/prisma.service.js';
-import { type AuthenticatedRequest, IS_PUBLIC_KEY, ROLES_KEY } from './auth.decorators.js';
+import {
+  type AuthenticatedRequest,
+  IS_PUBLIC_KEY,
+  ROLES_KEY,
+  STORE_SCOPE_KEY,
+} from './auth.decorators.js';
 import { readCookie, SESSION_COOKIE, verifySessionToken } from './session-token.js';
 
-export const USER_SELECT = { id: true, email: true, name: true, role: true } as const;
+export const USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  storeId: true,
+} as const;
 
 /**
  * Registered globally in AuthModule. Loads the user from the session cookie into `request.user`,
@@ -45,6 +56,19 @@ export class AuthGuard implements CanActivate {
 
     const roles = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES_KEY, targets);
     if (roles && !roles.includes(request.user.role)) throw new ForbiddenException();
+
+    const storeScopeKey = this.reflector.getAllAndOverride<string | undefined>(
+      STORE_SCOPE_KEY,
+      targets,
+    );
+    if (storeScopeKey && request.user.role === 'STORE_EMPLOYEE') {
+      const target = (request.params?.[storeScopeKey] ??
+        (request.body as Record<string, unknown> | undefined)?.[storeScopeKey]) as
+        string | undefined;
+      if (!request.user.storeId || request.user.storeId !== target) {
+        throw new ForbiddenException();
+      }
+    }
 
     return true;
   }
