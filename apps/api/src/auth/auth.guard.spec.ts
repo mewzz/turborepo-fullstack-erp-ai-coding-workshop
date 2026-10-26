@@ -5,12 +5,18 @@ import type { User } from '@erp/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import type { Env } from '../config/env.js';
 import type { PrismaService } from '../database/prisma.service.js';
-import { type AuthenticatedRequest, Public, Roles } from './auth.decorators.js';
+import { type AuthenticatedRequest, Public, Roles, StoreScoped } from './auth.decorators.js';
 import { AuthGuard } from './auth.guard.js';
 import { createSessionToken, SESSION_COOKIE } from './session-token.js';
 
 const secret = 'test-secret-that-is-at-least-32-characters';
-const staff: User = { id: 'u1', email: 'staff@erp.local', name: 'Staff User', role: 'STAFF' };
+const staff: User = {
+  id: 'u1',
+  email: 'staff@erp.local',
+  name: 'Staff User',
+  role: 'STORE_EMPLOYEE',
+  storeId: 'store-a',
+};
 
 class RoutesUnderTest {
   @Public()
@@ -18,8 +24,14 @@ class RoutesUnderTest {
 
   closed() {}
 
-  @Roles('ADMIN')
+  @Roles('ADMINISTRATOR')
   adminOnly() {}
+
+  @Roles('MANAGER', 'ADMINISTRATOR')
+  managerOrAdmin() {}
+
+  @StoreScoped('storeId')
+  storeScoped() {}
 }
 
 function setup(user: User | null) {
@@ -30,8 +42,12 @@ function setup(user: User | null) {
     { get: () => secret } as unknown as ConfigService<Env, true>,
   );
 
-  function run(route: keyof RoutesUnderTest, cookie?: string) {
-    const request = { headers: { cookie } } as AuthenticatedRequest;
+  function run(route: keyof RoutesUnderTest, cookie?: string, params?: Record<string, unknown>) {
+    const request = {
+      headers: { cookie },
+      params: params ?? {},
+      body: params ?? {},
+    } as unknown as AuthenticatedRequest;
     const context = {
       switchToHttp: () => ({ getRequest: () => request }),
       getHandler: () => RoutesUnderTest.prototype[route],
@@ -92,8 +108,48 @@ describe('AuthGuard', () => {
   });
 
   it('allows a user with the required role', async () => {
-    const { run } = setup({ ...staff, role: 'ADMIN' });
+    const { run } = setup({ ...staff, role: 'ADMINISTRATOR' });
 
     await expect(run('adminOnly', sessionCookie('u1')).result).resolves.toBe(true);
+  });
+
+  it('allows any user whose role is in the @Roles() list', async () => {
+    const { run } = setup({ ...staff, role: 'MANAGER' });
+
+    await expect(run('managerOrAdmin', sessionCookie('u1')).result).resolves.toBe(true);
+  });
+
+  describe('store scoping', () => {
+    it('lets a store employee act within their assigned store', async () => {
+      const { run } = setup(staff);
+
+      await expect(
+        run('storeScoped', sessionCookie('u1'), { storeId: 'store-a' }).result,
+      ).resolves.toBe(true);
+    });
+
+    it('forbids a store employee acting outside their assigned store', async () => {
+      const { run } = setup(staff);
+
+      await expect(
+        run('storeScoped', sessionCookie('u1'), { storeId: 'store-b' }).result,
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('forbids a store employee with no store assignment', async () => {
+      const { run } = setup({ ...staff, storeId: null });
+
+      await expect(
+        run('storeScoped', sessionCookie('u1'), { storeId: 'store-a' }).result,
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('lets a non-store-scoped role act on any store', async () => {
+      const { run } = setup({ ...staff, role: 'MANAGER', storeId: null });
+
+      await expect(
+        run('storeScoped', sessionCookie('u1'), { storeId: 'store-b' }).result,
+      ).resolves.toBe(true);
+    });
   });
 });
