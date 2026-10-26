@@ -32,3 +32,13 @@ Load the matching skill instead of guessing the details:
 - `add-feature`: end-to-end recipe with templates (Prisma model → contract → Nest module → React → tests).
 - `write-tests`: how api specs, web component tests, and contract schema tests are written and run.
 - `repo-commands`: Docker vs host, db migrations/seed/reset, `--filter`, dependencies, Prisma and `node_modules` gotchas.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`gh` CLI), repo `mewzz/turborepo-fullstack-erp-ai-coding-workshop`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

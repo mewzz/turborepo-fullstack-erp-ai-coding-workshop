@@ -1,0 +1,5 @@
+interface:
+  display_name: "Implement Ticket"
+  short_description: "One ticket, this repo's rules, ending in a pull request"
+policy:
+  allow_implicit_invocation: false

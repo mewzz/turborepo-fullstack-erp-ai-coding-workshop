@@ -1,4 +1,6 @@
 {
   "chat.defaultAgent": "erp",
-  "chat.enableKnowledge": false
+  "chat.enableKnowledge": false,
+  "chat.enableCodeIntelligence": false,
+  "chat.enableWorkflows": false
 }

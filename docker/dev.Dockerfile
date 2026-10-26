@@ -7,6 +7,12 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
+# Corporate TLS interception (e.g. Zscaler) re-signs HTTPS traffic with a custom
+# root CA. Register it so npm/node/pnpm can verify registry.npmjs.org.
+COPY docker/zscaler-root-ca.crt /usr/local/share/ca-certificates/zscaler-root-ca.crt
+RUN update-ca-certificates
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
 # Keep in sync with "packageManager" in the root package.json.
 RUN npm install -g pnpm@12.15.0
 
