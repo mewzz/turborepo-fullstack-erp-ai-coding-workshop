@@ -1,4 +1,4 @@
-import type { PurchaseOrder, PurchaseOrderStatus } from '@erp/contracts';
+import { isReceivable, type PurchaseOrder, type PurchaseOrderStatus } from '@erp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
@@ -125,7 +125,7 @@ function OrderRow({ order, onEdit }: { order: PurchaseOrder; onEdit: () => void 
     (order.status === 'DRAFT' || order.status === 'PENDING_APPROVAL') && (isCreator || isManager);
 
   const isEmployee = user?.role === 'STORE_EMPLOYEE';
-  const receivable = order.status === 'APPROVED' || order.status === 'PARTIALLY_RECEIVED';
+  const receivable = isReceivable(order.status);
   const canView = receivable || order.status === 'COMPLETED';
   /** A store employee receives; everyone else, and finished orders, just view (GR-01). */
   const receiveLabel = isEmployee && receivable ? 'รับสินค้า' : 'ดูการรับสินค้า';

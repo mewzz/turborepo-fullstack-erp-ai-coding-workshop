@@ -1,6 +1,6 @@
 import { oc } from '@orpc/contract';
 import * as z from 'zod';
-import { PurchaseOrderStatusSchema } from './purchase-orders.js';
+import { PurchaseOrderStatusSchema, type PurchaseOrderStatus } from './purchase-orders.js';
 
 /** One line of the receiving screen: what was ordered, already received, and still outstanding. */
 export const ReceivingLineSchema = z.object({
@@ -68,6 +68,16 @@ export const ReceiveGoodsSchema = z.object({
 export type ReceiveGoods = z.infer<typeof ReceiveGoodsSchema>;
 
 const PurchaseOrderIdSchema = z.object({ purchaseOrderId: z.string() });
+
+/** The order statuses goods can still be received against (GR-01). Shared by api and web. */
+export const RECEIVABLE_STATUSES = [
+  'APPROVED',
+  'PARTIALLY_RECEIVED',
+] as const satisfies readonly PurchaseOrderStatus[];
+
+export function isReceivable(status: PurchaseOrderStatus): boolean {
+  return (RECEIVABLE_STATUSES as readonly PurchaseOrderStatus[]).includes(status);
+}
 
 export const goodsReceiptsContract = {
   summary: oc

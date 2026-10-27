@@ -1,4 +1,4 @@
-import type { ReceivingLine } from '@erp/contracts';
+import { isReceivable, type ReceivingLine } from '@erp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -9,8 +9,6 @@ import { orpc } from '@/lib/orpc';
 import { cn } from '@/lib/utils';
 
 const TH_CLASS = 'px-4 py-2 font-medium';
-
-const RECEIVABLE = ['APPROVED', 'PARTIALLY_RECEIVED'];
 
 const MESSAGES = {
   notWhole: 'จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป',
@@ -97,9 +95,7 @@ export function GoodsReceiving({ purchaseOrderId }: { purchaseOrderId: string })
   const order = summary.data;
   const isEmployee = user?.role === 'STORE_EMPLOYEE';
   const canReceive =
-    isEmployee &&
-    RECEIVABLE.includes(order.status) &&
-    order.lines.some((line) => line.outstanding > 0);
+    isEmployee && isReceivable(order.status) && order.lines.some((line) => line.outstanding > 0);
 
   const change = (productId: string, value: string) => {
     // New quantities are a different request: never replay the old key for them.
@@ -137,7 +133,7 @@ export function GoodsReceiving({ purchaseOrderId }: { purchaseOrderId: string })
       </div>
 
       {order.status === 'COMPLETED' && <p className="text-sm">รับสินค้าครบแล้ว</p>}
-      {!canReceive && order.status !== 'COMPLETED' && !RECEIVABLE.includes(order.status) && (
+      {order.status !== 'COMPLETED' && !isReceivable(order.status) && (
         <p className="text-sm text-muted-foreground">ใบสั่งซื้อนี้ยังรับสินค้าไม่ได้</p>
       )}
 

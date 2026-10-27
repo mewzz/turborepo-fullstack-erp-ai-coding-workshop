@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isReceivable } from '@erp/contracts';
 import type {
   GoodsReceipt,
   PurchaseOrderStatus,
@@ -49,9 +50,7 @@ interface ReceiptRow {
 }
 
 /** Statuses a store can still receive against (GR-01). */
-const RECEIVABLE: PurchaseOrderStatus[] = ['APPROVED', 'PARTIALLY_RECEIVED'];
-
-/** Next receipt number from a database sequence, so concurrent receipts never collide. */
+/** The human-facing receipt number for a database sequence value, e.g. 1 becomes "GR-0001". */
 function formatNumber(sequence: bigint | number): string {
   return `GR-${String(sequence).padStart(4, '0')}`;
 }
@@ -145,13 +144,13 @@ export class GoodsReceiptService {
       status: order.status,
       destinationStoreId: order.destinationStoreId,
       lines: order.lines.map((line) => {
-        const done = received.get(line.productId) ?? 0;
+        const receivedQty = received.get(line.productId) ?? 0;
         return {
           productId: line.productId,
           productName: line.productName,
           ordered: line.quantity,
-          received: done,
-          outstanding: Math.max(line.quantity - done, 0),
+          received: receivedQty,
+          outstanding: Math.max(line.quantity - receivedQty, 0),
         };
       }),
     };
@@ -181,12 +180,16 @@ export class GoodsReceiptService {
 
   async receive(input: ReceiveGoods, user: User): Promise<GoodsReceipt> {
     // Authorize before touching the key, so another store can never replay its way to a receipt.
-    const preview = await this.loadOrder(input.purchaseOrderId);
-    this.assertCanReceive(user, preview.destinationStoreId);
+    // The destination store never changes once an order is approved, so checking it here, outside
+    // the transaction, is safe.
+    const orderForAuthorization = await this.loadOrder(input.purchaseOrderId);
+    this.assertCanReceive(user, orderForAuthorization.destinationStoreId);
 
     const row = await this.prisma.$transaction(async (tx) => {
       // Serialize every receipt for this order. The lock is held until the transaction ends, so a
       // racing request reads the totals only after the winner has committed (GR-05, INV-04).
+      // This relies on Postgres's default READ COMMITTED isolation: under REPEATABLE READ or
+      // SERIALIZABLE the re-reads below would still see the pre-lock snapshot.
       await tx.$queryRaw`SELECT "id" FROM "PurchaseOrder" WHERE "id" = ${input.purchaseOrderId} FOR UPDATE`;
 
       // A replay returns the original receipt, even after the order has completed (GR-04).
@@ -212,26 +215,27 @@ export class GoodsReceiptService {
         include: { lines: true },
       });
       if (!order) throw new ORPCError('NOT_FOUND', { message: MESSAGES.orderNotFound });
-      if (!RECEIVABLE.includes(order.status)) {
+      if (!isReceivable(order.status)) {
         throw new ORPCError('BAD_REQUEST', { message: MESSAGES.notReceivable });
       }
 
       const received = await this.receivedByProduct(tx, order.id);
       const ordered = new Map(order.lines.map((line) => [line.productId, line]));
       const incoming = input.lines.filter((line) => line.quantity > 0);
+      const incomingByProduct = new Map(incoming.map((line) => [line.productId, line.quantity]));
+      /** Cumulative quantity for a product once this receipt is confirmed. */
+      const totalAfter = (productId: string) =>
+        (received.get(productId) ?? 0) + (incomingByProduct.get(productId) ?? 0);
 
-      for (const line of incoming) {
-        const orderLine = ordered.get(line.productId);
-        if (!orderLine) throw new ORPCError('BAD_REQUEST', { message: MESSAGES.notOnOrder });
-        if ((received.get(line.productId) ?? 0) + line.quantity > orderLine.quantity) {
-          throw new ORPCError('BAD_REQUEST', { message: MESSAGES.overReceive });
-        }
-      }
       // A zero-quantity line for a product that is not on the order is still a bad request.
       if (input.lines.some((line) => !ordered.has(line.productId))) {
         throw new ORPCError('BAD_REQUEST', { message: MESSAGES.notOnOrder });
       }
-
+      if (
+        incoming.some((line) => totalAfter(line.productId) > ordered.get(line.productId)!.quantity)
+      ) {
+        throw new ORPCError('BAD_REQUEST', { message: MESSAGES.overReceive });
+      }
       const [sequence] = await tx.$queryRaw<
         { n: bigint }[]
       >`SELECT nextval('goods_receipt_number_seq') AS n`;
@@ -280,12 +284,7 @@ export class GoodsReceiptService {
         );
       }
 
-      const complete = order.lines.every(
-        (line) =>
-          (received.get(line.productId) ?? 0) +
-            (incoming.find((l) => l.productId === line.productId)?.quantity ?? 0) ===
-          line.quantity,
-      );
+      const complete = order.lines.every((line) => totalAfter(line.productId) === line.quantity);
       await tx.purchaseOrder.update({
         where: { id: order.id },
         data: { status: complete ? 'COMPLETED' : 'PARTIALLY_RECEIVED' },

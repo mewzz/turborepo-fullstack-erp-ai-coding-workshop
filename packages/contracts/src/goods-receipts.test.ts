@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ReceiveGoodsSchema } from './goods-receipts.js';
+import { isReceivable, ReceiveGoodsSchema } from './goods-receipts.js';
+import { PurchaseOrderStatusSchema } from './purchase-orders.js';
 
 const valid = {
   purchaseOrderId: 'po1',
@@ -9,6 +10,14 @@ const valid = {
     { productId: 'p2', quantity: 0 },
   ],
 };
+
+describe('isReceivable', () => {
+  it('is true only for Approved and Partially Received orders (GR-01)', () => {
+    const receivable = PurchaseOrderStatusSchema.options.filter((status) => isReceivable(status));
+
+    expect(receivable).toEqual(['APPROVED', 'PARTIALLY_RECEIVED']);
+  });
+});
 
 describe('ReceiveGoodsSchema', () => {
   it('accepts a receipt with at least one line above zero (zero lines allowed)', () => {
