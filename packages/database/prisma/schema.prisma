@@ -29,6 +29,7 @@ model Store {
   movements StockMovement[]
   balances  StockBalance[]
   purchaseOrders PurchaseOrder[]
+  sales     Sale[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -45,6 +46,7 @@ model User {
   store        Store?   @relation(fields: [storeId], references: [id])
   movements    StockMovement[]
   purchaseOrders PurchaseOrder[]
+  sales        Sale[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -65,6 +67,7 @@ model Product {
   movements StockMovement[]
   balances  StockBalance[]
   orderLines PurchaseOrderLine[]
+  saleLines SaleLine[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -221,4 +224,57 @@ model PurchaseOrderLine {
   quantity        Int
 
   @@unique([purchaseOrderId, productId])
+}
+
+/// A sale's lifecycle (SAL-01..04). A draft has no stock effect; a confirmed sale is terminal —
+/// never edited, cancelled or returned. Confirmation decreases stock through the ledger primitive
+/// in one transaction (T7).
+enum SaleStatus {
+  /// Being recorded by its store-employee author (SAL-01). No stock effect (SAL-02).
+  DRAFT
+  /// Confirmed: a document number is set and stock has been decreased (SAL-03). Terminal (SAL-04).
+  CONFIRMED
+}
+
+/// A sale header recorded by a store employee for their assigned store (T7).
+///
+/// The document `number` is null while a draft and set at confirmation, so a draft never consumes a
+/// number. Line product name and unit price are snapshotted at creation, always the current selling
+/// price with no override (SAL-01), so later catalogue edits never rewrite history.
+model Sale {
+  id     String @id @default(cuid())
+  /// Human-facing document number, unique org-wide, e.g. "SALE-0001". Null until confirmed (SAL-03).
+  number String? @unique
+  /// The store the sale belongs to; a store employee may only sell for their assigned store (SAL-01).
+  storeId String
+  store   Store @relation(fields: [storeId], references: [id])
+  status SaleStatus @default(DRAFT)
+  /// The store employee who recorded the sale.
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  /// Set at confirmation (SAL-03); null while a draft.
+  confirmedAt DateTime?
+  lines  SaleLine[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+}
+
+/// A sale line. Product name and unit price are snapshotted at creation — always the current
+/// selling price, no override (SAL-01). No product repeats within one sale.
+model SaleLine {
+  id         String @id @default(cuid())
+  saleId     String
+  sale       Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product @relation(fields: [productId], references: [id])
+  /// Snapshot of the product name at creation time.
+  productName String
+  /// Snapshot of the current selling price at creation time. Thai baht, two decimals (SAL-01).
+  unitPrice  Decimal @db.Decimal(12, 2)
+  /// Whole units, strictly positive.
+  quantity   Int
+
+  @@unique([saleId, productId])
 }

@@ -3,6 +3,7 @@ import { healthContract } from './health.js';
 import { inventoryContract } from './inventory.js';
 import { productsContract } from './products.js';
 import { purchaseOrdersContract } from './purchase-orders.js';
+import { salesContract } from './sales.js';
 import { storesContract } from './stores.js';
 import { suppliersContract } from './suppliers.js';
 
@@ -11,6 +12,7 @@ export * from './health.js';
 export * from './inventory.js';
 export * from './products.js';
 export * from './purchase-orders.js';
+export * from './sales.js';
 export * from './stores.js';
 export * from './suppliers.js';
 
@@ -27,6 +29,7 @@ export const contract = {
   inventory: inventoryContract,
   products: productsContract,
   purchaseOrders: purchaseOrdersContract,
+  sales: salesContract,
   stores: storesContract,
   suppliers: suppliersContract,
 };
