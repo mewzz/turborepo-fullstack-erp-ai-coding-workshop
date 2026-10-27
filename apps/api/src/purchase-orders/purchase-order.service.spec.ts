@@ -225,6 +225,22 @@ describe('PurchaseOrderService.transition', () => {
     );
   });
 
+  it('does not write a reason on a reasonless transition (approve keeps any prior reason)', async () => {
+    const update = vi.fn().mockResolvedValue(orderRow({ status: 'APPROVED' }));
+    const { service } = await createService({
+      purchaseOrder: {
+        findUnique: vi.fn().mockResolvedValue(orderRow({ status: 'PENDING_APPROVAL' })),
+        update,
+      },
+    });
+
+    await service.transition('approve', { id: 'po1' }, manager);
+
+    const data = update.mock.calls[0]?.[0]?.data;
+    expect(data.status).toBe('APPROVED');
+    expect('reason' in data).toBe(false);
+  });
+
   it('forbids a non-creator from submitting', async () => {
     const { service } = await createService({
       purchaseOrder: { findUnique: vi.fn().mockResolvedValue(orderRow()) },

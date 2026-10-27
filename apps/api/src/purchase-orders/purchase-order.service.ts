@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { CreatePurchaseOrder, PurchaseOrder, UpdatePurchaseOrder, User } from '@erp/contracts';
 import { ORPCError } from '@orpc/nest';
+import { mapWriteErrors } from '../database/prisma-errors.js';
 import { PrismaService } from '../database/prisma.service.js';
 import {
   nextStatus,
@@ -17,14 +18,26 @@ type LineRow = {
   quantity: number;
 };
 
-/** A stored order with its lines joined, as Prisma returns it. */
-type OrderRow = Omit<PurchaseOrder, 'lines'> & { lines: LineRow[] };
+/** A stored order with its lines joined, as Prisma returns it (reason may be null, never absent). */
+type OrderRow = {
+  id: string;
+  number: string;
+  supplierId: string;
+  destinationStoreId: string;
+  expectedReceiptDate: string;
+  status: PurchaseOrder['status'];
+  createdById: string;
+  reason: string | null;
+  lines: LineRow[];
+};
 
 const MESSAGES = {
   notFound: 'ไม่พบใบสั่งซื้อ',
   notDraft: 'แก้ไขได้เฉพาะใบสั่งซื้อที่เป็นแบบร่างเท่านั้น',
   notOwner: 'แก้ไขได้เฉพาะใบสั่งซื้อที่คุณเป็นผู้สร้างเท่านั้น',
   unknownProduct: 'มีสินค้าในรายการที่ไม่พบหรือถูกปิดการใช้งาน',
+  // Shared with mapWriteErrors: a bad supplier/store id or duplicate number maps to these.
+  conflict: 'เลขที่ใบสั่งซื้อนี้มีอยู่แล้ว',
 };
 
 /**
@@ -78,19 +91,23 @@ export class PurchaseOrderService {
   async create(input: CreatePurchaseOrder, user: User): Promise<PurchaseOrder> {
     const lines = await this.snapshotLines(input.lines);
     const number = await this.nextNumber();
-    const row = await this.prisma.purchaseOrder.create({
-      data: {
-        number,
-        supplierId: input.supplierId,
-        destinationStoreId: input.destinationStoreId,
-        expectedReceiptDate: input.expectedReceiptDate,
-        status: 'DRAFT',
-        createdById: user.id,
-        lines: { create: lines },
-      },
-      include: { lines: true },
-    });
-    return this.toOrder(row as OrderRow);
+    const row = await mapWriteErrors(
+      () =>
+        this.prisma.purchaseOrder.create({
+          data: {
+            number,
+            supplierId: input.supplierId,
+            destinationStoreId: input.destinationStoreId,
+            expectedReceiptDate: input.expectedReceiptDate,
+            status: 'DRAFT',
+            createdById: user.id,
+            lines: { create: lines },
+          },
+          include: { lines: true },
+        }),
+      MESSAGES,
+    );
+    return this.toOrder(row);
   }
 
   async update(input: UpdatePurchaseOrder, user: User): Promise<PurchaseOrder> {
@@ -104,20 +121,24 @@ export class PurchaseOrderService {
     }
 
     const lines = await this.snapshotLines(input.lines);
-    const row = await this.prisma.$transaction(async (tx) => {
-      await tx.purchaseOrderLine.deleteMany({ where: { purchaseOrderId: input.id } });
-      return tx.purchaseOrder.update({
-        where: { id: input.id },
-        data: {
-          supplierId: input.supplierId,
-          destinationStoreId: input.destinationStoreId,
-          expectedReceiptDate: input.expectedReceiptDate,
-          lines: { create: lines },
-        },
-        include: { lines: true },
-      });
-    });
-    return this.toOrder(row as OrderRow);
+    const row = await mapWriteErrors(
+      () =>
+        this.prisma.$transaction(async (tx) => {
+          await tx.purchaseOrderLine.deleteMany({ where: { purchaseOrderId: input.id } });
+          return tx.purchaseOrder.update({
+            where: { id: input.id },
+            data: {
+              supplierId: input.supplierId,
+              destinationStoreId: input.destinationStoreId,
+              expectedReceiptDate: input.expectedReceiptDate,
+              lines: { create: lines },
+            },
+            include: { lines: true },
+          });
+        }),
+      MESSAGES,
+    );
+    return this.toOrder(row);
   }
 
   async get(id: string): Promise<PurchaseOrder> {
@@ -126,7 +147,7 @@ export class PurchaseOrderService {
       include: { lines: true },
     });
     if (!row) throw new ORPCError('NOT_FOUND', { message: MESSAGES.notFound });
-    return this.toOrder(row as OrderRow);
+    return this.toOrder(row);
   }
 
   async list(): Promise<PurchaseOrder[]> {
@@ -134,13 +155,14 @@ export class PurchaseOrderService {
       include: { lines: true },
       orderBy: { number: 'desc' },
     });
-    return rows.map((row) => this.toOrder(row as OrderRow));
+    return rows.map((row) => this.toOrder(row));
   }
 
   /**
    * Run a guarded transition. Loads the order, derives the actor's role and authorship, validates
    * the move with the pure `nextStatus` guard (which throws FORBIDDEN or BAD_REQUEST), then writes
-   * the new status and the reason, if any. Never posts a stock movement (PO-02).
+   * the new status. A reason is stored only when the action carries one (reject and cancel), so an
+   * approve or submit never clears a reason it did not set. Never posts a stock movement (PO-02).
    */
   async transition(
     action: PurchaseOrderAction,
@@ -158,9 +180,9 @@ export class PurchaseOrderService {
 
     const row = await this.prisma.purchaseOrder.update({
       where: { id: input.id },
-      data: { status, reason: input.reason ?? null },
+      data: { status, ...(input.reason ? { reason: input.reason } : {}) },
       include: { lines: true },
     });
-    return this.toOrder(row as OrderRow);
+    return this.toOrder(row);
   }
 }

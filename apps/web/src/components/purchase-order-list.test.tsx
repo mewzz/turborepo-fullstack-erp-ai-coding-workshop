@@ -141,7 +141,7 @@ describe('PurchaseOrderList', () => {
 
     renderList();
     const row = (await screen.findByText('PO-0001')).closest('tr')!;
-    fireEvent.click(within(row).getByRole('button', { name: 'ส่งอนุมัติ' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'ส่งอนุมัติ PO-0001' }));
 
     expect(await screen.findByText('รออนุมัติ')).toBeInTheDocument();
     expect(submitted).toBe(true);
@@ -166,7 +166,7 @@ describe('PurchaseOrderList', () => {
 
     renderList();
     const row = (await screen.findByText('PO-0001')).closest('tr')!;
-    fireEvent.click(within(row).getByRole('button', { name: 'อนุมัติ' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'อนุมัติ PO-0001' }));
 
     expect(await screen.findByText('อนุมัติแล้ว')).toBeInTheDocument();
   });
@@ -181,7 +181,7 @@ describe('PurchaseOrderList', () => {
     renderList();
     await screen.findByText('PO-0001');
 
-    expect(screen.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'อนุมัติ PO-0001' })).not.toBeInTheDocument();
   });
 
   it('sends the reason a manager gives when rejecting', async () => {
@@ -206,9 +206,42 @@ describe('PurchaseOrderList', () => {
 
     renderList();
     const row = (await screen.findByText('PO-0001')).closest('tr')!;
-    fireEvent.click(within(row).getByRole('button', { name: 'ปฏิเสธ' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'ปฏิเสธ PO-0001' }));
 
     expect(await screen.findByText('ถูกปฏิเสธ')).toBeInTheDocument();
     expect(rejectBody).toMatchObject({ reason: 'ราคาสูงไป' });
+  });
+
+  it('lets the creating officer edit a draft and re-save it', async () => {
+    let orders = [draftOrder()];
+    let updateBody: Record<string, unknown> | undefined;
+    const fetch = vi.fn(async (request: Request) => {
+      const key = `${request.method} ${new URL(request.url).pathname.replace(/^\/api/, '')}`;
+      if (key === 'GET /auth/me') return Response.json({ user: officer });
+      if (key === 'GET /purchase-orders') return Response.json(orders);
+      if (key === 'GET /suppliers') return Response.json([supplier]);
+      if (key === 'GET /stores') return Response.json([store]);
+      if (key === 'GET /products') return Response.json([product]);
+      if (key === 'PATCH /purchase-orders/po1') {
+        updateBody = (await request.json()) as Record<string, unknown>;
+        orders = [draftOrder({ expectedReceiptDate: updateBody.expectedReceiptDate as string })];
+        return Response.json(orders[0]);
+      }
+      return Response.json({ message: `No mock for ${key}` }, { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    renderList();
+    const row = (await screen.findByText('PO-0001')).closest('tr')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'แก้ไข PO-0001' }));
+
+    // The edit form opens seeded with the order's values.
+    const dateField = await screen.findByLabelText('วันที่คาดว่าจะได้รับ');
+    fireEvent.change(dateField, { target: { value: '2026-02-01' } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกการแก้ไข' }));
+
+    expect(await screen.findByText('2026-02-01')).toBeInTheDocument();
+    expect(updateBody).toMatchObject({ expectedReceiptDate: '2026-02-01' });
+    expect(updateBody?.lines).toBeDefined();
   });
 });
