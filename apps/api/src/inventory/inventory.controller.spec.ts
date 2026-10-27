@@ -162,9 +162,9 @@ describe('InventoryController.adjust', () => {
   });
 
   it('surfaces an over-reduction rejection from the service', async () => {
-    const adjust = vi.fn().mockRejectedValue(
-      Object.assign(new Error('สต็อกคงเหลือติดลบไม่ได้'), { code: 'CONFLICT' }),
-    );
+    const adjust = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('สต็อกคงเหลือติดลบไม่ได้'), { code: 'CONFLICT' }));
     const controller = await createController(vi.fn(), adjust);
 
     await expect(
