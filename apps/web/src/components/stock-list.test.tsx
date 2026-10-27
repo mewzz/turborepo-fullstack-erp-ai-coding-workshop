@@ -115,9 +115,16 @@ describe('StockList', () => {
     await openAdjustment();
     fillAdjustment('DECREASE', '4', 'นับสต็อกใหม่');
 
-    expect(await screen.findByRole('status')).toHaveTextContent('10 → 6');
-    const row = screen.getByText('SKU001').closest('tr')!;
+    expect(await screen.findByRole('status')).toHaveTextContent('บันทึกการปรับสต็อกแล้ว');
+    const stockTable = screen.getByRole('table', { name: 'สต็อกคงเหลือ' });
+    const row = within(stockTable).getByText('SKU001').closest('tr')!;
     expect(await within(row).findByText('6')).toBeInTheDocument();
+    const movements = await screen.findByRole('table', { name: 'รายการเคลื่อนไหวล่าสุด' });
+    const movement = within(movements).getByText('m1').closest('tr')!;
+    expect(within(movement).getByText('SKU001')).toBeInTheDocument();
+    expect(within(movement).getByText('-4')).toBeInTheDocument();
+    expect(within(movement).getByText('10')).toBeInTheDocument();
+    expect(within(movement).getByText('6')).toBeInTheDocument();
     expect(body).toEqual({
       productId: 'p1',
       storeId: 's1',

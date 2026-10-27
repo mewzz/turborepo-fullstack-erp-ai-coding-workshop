@@ -205,6 +205,19 @@ describe('StockAdjustmentService.adjust', () => {
     });
   });
 
+  it('still surfaces the over-reduction when the FAILURE audit write itself fails', async () => {
+    const prisma = new FakePrisma();
+    openingBalance(prisma, 5);
+    const service = await createService(prisma);
+    prisma.auditLog.create = vi.fn(async () => {
+      throw new Error('audit write failed');
+    });
+
+    await expect(
+      service.adjust({ ...base, direction: 'DECREASE', quantity: 6 }, manager),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
   it('writes nothing when the audit write fails, keeping the pair atomic', async () => {
     const prisma = new FakePrisma();
     openingBalance(prisma, 10);

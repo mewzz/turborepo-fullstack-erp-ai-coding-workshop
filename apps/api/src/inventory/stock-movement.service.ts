@@ -29,12 +29,18 @@ export interface PostMovementResult {
   balanceAfter: number;
 }
 
-/** oRPC error messages this primitive throws. Exported so callers can tell the two CONFLICTs apart. */
-export const MOVEMENT_MESSAGES = {
+/** oRPC error messages this primitive throws. */
+const MESSAGES = {
   negative: 'สต็อกคงเหลือติดลบไม่ได้',
   conflict: 'สต็อกถูกแก้ไขโดยรายการอื่น กรุณาลองใหม่',
 };
-const MESSAGES = MOVEMENT_MESSAGES;
+
+/**
+ * Machine-readable marker on the CONFLICT thrown for a would-be-negative balance, in the error's
+ * `data.reason`. Callers that audit a rejected movement test this instead of the Thai message, so
+ * rewording the message cannot silently change behaviour.
+ */
+export const NEGATIVE_BALANCE_REASON = 'NEGATIVE_BALANCE';
 
 /** The subset of the Prisma client the primitive touches, so a caller can pass an open transaction. */
 type MovementTx = Pick<PrismaService, 'stockBalance' | 'stockMovement'>;
@@ -68,7 +74,10 @@ export class StockMovementService {
     const balanceBefore = balance?.quantity ?? 0;
     const balanceAfter = balanceBefore + input.delta;
     if (balanceAfter < 0) {
-      throw new ORPCError('CONFLICT', { message: MESSAGES.negative });
+      throw new ORPCError('CONFLICT', {
+        message: MESSAGES.negative,
+        data: { reason: NEGATIVE_BALANCE_REASON },
+      });
     }
 
     const movement = await tx.stockMovement.create({

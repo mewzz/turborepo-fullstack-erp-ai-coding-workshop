@@ -1,15 +1,22 @@
-import { Injectable } from '@nestjs/common';
-import type { AdjustStockInput, AdjustStockResult, User } from '@erp/contracts';
+import { randomUUID } from 'node:crypto';
+import { Injectable, Logger } from '@nestjs/common';
+import type { AdjustStockInput, AdjustStockResult, AuditOutcome, User } from '@erp/contracts';
 import { ORPCError } from '@orpc/nest';
 import { PrismaService } from '../database/prisma.service.js';
-import { MOVEMENT_MESSAGES, StockMovementService } from './stock-movement.service.js';
+import { NEGATIVE_BALANCE_REASON, StockMovementService } from './stock-movement.service.js';
 
 /** The action name recorded on every stock-adjustment audit entry (NFR-03). */
 const ADJUSTMENT_ACTION = 'STOCK_ADJUSTMENT';
 
 /** True when the primitive rejected the movement because it would drive the balance negative. */
 function isOverReduction(error: unknown): boolean {
-  return error instanceof ORPCError && error.message === MOVEMENT_MESSAGES.negative;
+  return (
+    error instanceof ORPCError &&
+    typeof error.data === 'object' &&
+    error.data !== null &&
+    'reason' in error.data &&
+    error.data.reason === NEGATIVE_BALANCE_REASON
+  );
 }
 
 /**
@@ -23,6 +30,8 @@ function isOverReduction(error: unknown): boolean {
  */
 @Injectable()
 export class StockAdjustmentService {
+  private readonly logger = new Logger(StockAdjustmentService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly movements: StockMovementService,
@@ -30,7 +39,15 @@ export class StockAdjustmentService {
 
   async adjust(input: AdjustStockInput, actor: User): Promise<AdjustStockResult> {
     const delta = input.direction === 'INCREASE' ? input.quantity : -input.quantity;
-    const sourceDocument = `ADJ-${Date.now()}`;
+    // One reference per attempt, carrying the mandatory reason, shared by the movement and its audit
+    // entry. The random suffix keeps two adjustments in the same millisecond distinct.
+    const sourceDocument = `ADJ-${randomUUID().slice(0, 8).toUpperCase()}: ${input.reason}`;
+    const audit = (outcome: AuditOutcome) => ({
+      actorId: actor.id,
+      action: ADJUSTMENT_ACTION,
+      sourceDocument,
+      outcome,
+    });
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -40,21 +57,13 @@ export class StockAdjustmentService {
             storeId: input.storeId,
             delta,
             type: 'ADJUSTMENT',
-            // The mandatory reason travels with the ledger row as its source document (INV-05).
-            sourceDocument: `${sourceDocument}: ${input.reason}`,
+            sourceDocument,
             actorId: actor.id,
           },
           tx,
         );
 
-        await tx.auditLog.create({
-          data: {
-            actorId: actor.id,
-            action: ADJUSTMENT_ACTION,
-            sourceDocument: `${sourceDocument}: ${input.reason}`,
-            outcome: 'SUCCESS',
-          },
-        });
+        await tx.auditLog.create({ data: audit('SUCCESS') });
 
         return {
           movementId: result.movementId,
@@ -68,17 +77,25 @@ export class StockAdjustmentService {
       // An over-reduction is a rejected but auditable attempt: record the failure outside the
       // rolled-back transaction, then surface the original rejection. Any other error (e.g. a
       // failed audit write) rolls everything back and propagates with nothing recorded.
-      if (isOverReduction(error)) {
-        await this.prisma.auditLog.create({
-          data: {
-            actorId: actor.id,
-            action: ADJUSTMENT_ACTION,
-            sourceDocument: `${sourceDocument}: ${input.reason}`,
-            outcome: 'FAILURE',
-          },
-        });
-      }
+      if (isOverReduction(error)) await this.recordFailure(audit('FAILURE'));
       throw error;
+    }
+  }
+
+  /**
+   * Append the FAILURE entry. If that write itself fails, log it and let the caller rethrow the
+   * original rejection: the manager must see why the adjustment was refused, not an audit error.
+   */
+  private async recordFailure(data: {
+    actorId: string;
+    action: string;
+    sourceDocument: string;
+    outcome: AuditOutcome;
+  }) {
+    try {
+      await this.prisma.auditLog.create({ data });
+    } catch (auditError) {
+      this.logger.error('Could not record the FAILURE audit entry', auditError);
     }
   }
 }

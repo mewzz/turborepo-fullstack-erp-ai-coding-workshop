@@ -7,6 +7,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCurrentUser } from '@/lib/auth';
 import { orpc } from '@/lib/orpc';
+import { cn } from '@/lib/utils';
+
+/** Header-cell classes shared by both tables on this screen. */
+const TH_CLASS = 'px-4 py-2 font-medium';
+
+/** One adjustment made in this session, shown as a movement row with its before/after balance. */
+type Movement = {
+  movementId: string;
+  sku: string;
+  storeCode: string;
+  before: number;
+  after: number;
+};
 
 /** A select styled to match the shadcn `Input` so the two line up in a form row. */
 const SELECT_CLASS =
@@ -26,7 +39,7 @@ export function StockList() {
   const isManager = user?.role === 'MANAGER';
   const stock = useQuery(orpc.inventory.search.queryOptions({ input: {} }));
   const [adjusting, setAdjusting] = useState<StockSearchResult | null>(null);
-  const [lastResult, setLastResult] = useState<AdjustStockResult | null>(null);
+  const [movements, setMovements] = useState<Movement[]>([]);
 
   return (
     <div className="space-y-6">
@@ -40,18 +53,66 @@ export function StockList() {
           key={`${adjusting.productId}:${adjusting.storeId}`}
           row={adjusting}
           onDone={(result) => {
-            setLastResult(result);
+            setMovements((previous) => [
+              {
+                movementId: result.movementId,
+                sku: adjusting.sku,
+                storeCode: adjusting.storeCode,
+                before: result.balanceBefore,
+                after: result.balanceAfter,
+              },
+              ...previous,
+            ]);
             setAdjusting(null);
           }}
           onCancel={() => setAdjusting(null)}
         />
       )}
 
-      {lastResult && (
-        <p role="status" className="rounded-lg border p-3 text-sm">
-          บันทึกการปรับสต็อกแล้ว (รายการเคลื่อนไหว {lastResult.movementId}): ยอดคงเหลือ{' '}
-          {lastResult.balanceBefore} → {lastResult.balanceAfter}
-        </p>
+      {movements.length > 0 && (
+        <div className="space-y-2">
+          <p role="status" className="text-sm">
+            บันทึกการปรับสต็อกแล้ว
+          </p>
+          <div className="overflow-x-auto rounded-lg border">
+            <table aria-label="รายการเคลื่อนไหวล่าสุด" className="w-full text-left text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  <th scope="col" className={TH_CLASS}>
+                    รายการเคลื่อนไหว
+                  </th>
+                  <th scope="col" className={TH_CLASS}>
+                    SKU
+                  </th>
+                  <th scope="col" className={TH_CLASS}>
+                    สาขา
+                  </th>
+                  <th scope="col" className={cn(TH_CLASS, 'text-right')}>
+                    ก่อนปรับ
+                  </th>
+                  <th scope="col" className={cn(TH_CLASS, 'text-right')}>
+                    เปลี่ยนแปลง
+                  </th>
+                  <th scope="col" className={cn(TH_CLASS, 'text-right')}>
+                    หลังปรับ
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((movement) => (
+                  <tr key={movement.movementId} className="border-b last:border-0">
+                    <td className="px-4 py-2 font-mono">{movement.movementId}</td>
+                    <td className="px-4 py-2 font-mono">{movement.sku}</td>
+                    <td className="px-4 py-2">{movement.storeCode}</td>
+                    <td className="px-4 py-2 text-right">{movement.before}</td>
+                    <td className="px-4 py-2 text-right">{movement.after - movement.before}</td>
+                    <td className="px-4 py-2 text-right">{movement.after}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {stock.isPending ? (
@@ -64,29 +125,29 @@ export function StockList() {
         <p className="text-muted-foreground">ยังไม่มีข้อมูลสต็อก</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-left text-sm">
+          <table aria-label="สต็อกคงเหลือ" className="w-full text-left text-sm">
             <thead className="border-b bg-muted/50">
               <tr>
-                <th scope="col" className="px-4 py-2 font-medium">
+                <th scope="col" className={TH_CLASS}>
                   SKU
                 </th>
-                <th scope="col" className="px-4 py-2 font-medium">
+                <th scope="col" className={TH_CLASS}>
                   ชื่อสินค้า
                 </th>
-                <th scope="col" className="px-4 py-2 font-medium">
+                <th scope="col" className={TH_CLASS}>
                   สาขา
                 </th>
-                <th scope="col" className="px-4 py-2 text-right font-medium">
+                <th scope="col" className={cn(TH_CLASS, 'text-right')}>
                   คงเหลือ
                 </th>
-                <th scope="col" className="px-4 py-2 font-medium">
+                <th scope="col" className={TH_CLASS}>
                   หน่วย
                 </th>
-                <th scope="col" className="px-4 py-2 font-medium">
+                <th scope="col" className={TH_CLASS}>
                   สถานะ
                 </th>
                 {isManager && (
-                  <th scope="col" className="px-4 py-2 font-medium">
+                  <th scope="col" className={TH_CLASS}>
                     การจัดการ
                   </th>
                 )}
@@ -111,10 +172,7 @@ export function StockList() {
                         size="sm"
                         variant="ghost"
                         aria-label={`ปรับสต็อก ${row.sku} ${row.storeCode}`}
-                        onClick={() => {
-                          setLastResult(null);
-                          setAdjusting(row);
-                        }}
+                        onClick={() => setAdjusting(row)}
                       >
                         ปรับสต็อก
                       </Button>
