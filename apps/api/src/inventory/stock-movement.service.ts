@@ -34,6 +34,9 @@ const MESSAGES = {
   conflict: 'สต็อกถูกแก้ไขโดยรายการอื่น กรุณาลองใหม่',
 };
 
+/** The subset of the Prisma client the primitive touches, so a caller can pass an open transaction. */
+type MovementTx = Pick<PrismaService, 'stockBalance' | 'stockMovement'>;
+
 /**
  * The integrity spine every transaction module reuses (INV-02, INV-03, INV-04).
  *
@@ -41,69 +44,77 @@ const MESSAGES = {
  * together in a single transaction, or rolls both back. It rejects any change that would drive the
  * balance negative, and it updates the balance under an optimistic-lock version check so a
  * concurrent confirm that read a stale balance loses the race instead of overwriting it.
+ *
+ * A caller that must write more rows atomically with the movement (e.g. a sale that also records
+ * the document and its idempotency key) passes its own open transaction as `tx`; the primitive
+ * then joins that transaction instead of opening its own, so everything commits or rolls back
+ * together.
  */
 @Injectable()
 export class StockMovementService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async postMovement(input: PostMovementInput): Promise<PostMovementResult> {
-    return this.prisma.$transaction(async (tx) => {
-      const balance = await tx.stockBalance.findUnique({
-        where: { productId_storeId: { productId: input.productId, storeId: input.storeId } },
-      });
+  async postMovement(input: PostMovementInput, tx?: MovementTx): Promise<PostMovementResult> {
+    if (tx) return this.post(tx, input);
+    return this.prisma.$transaction((transaction) => this.post(transaction, input));
+  }
 
-      const balanceBefore = balance?.quantity ?? 0;
-      const balanceAfter = balanceBefore + input.delta;
-      if (balanceAfter < 0) {
-        throw new ORPCError('CONFLICT', { message: MESSAGES.negative });
+  private async post(tx: MovementTx, input: PostMovementInput): Promise<PostMovementResult> {
+    const balance = await tx.stockBalance.findUnique({
+      where: { productId_storeId: { productId: input.productId, storeId: input.storeId } },
+    });
+
+    const balanceBefore = balance?.quantity ?? 0;
+    const balanceAfter = balanceBefore + input.delta;
+    if (balanceAfter < 0) {
+      throw new ORPCError('CONFLICT', { message: MESSAGES.negative });
+    }
+
+    const movement = await tx.stockMovement.create({
+      data: {
+        productId: input.productId,
+        storeId: input.storeId,
+        delta: input.delta,
+        balanceBefore,
+        balanceAfter,
+        type: input.type,
+        sourceDocument: input.sourceDocument,
+        actorId: input.actorId,
+      },
+    });
+
+    if (balance) {
+      // Optimistic lock: the update only matches while the version is unchanged. A concurrent
+      // writer that already bumped it leaves zero rows affected, and we lose the race (INV-04).
+      const updated = await tx.stockBalance.updateMany({
+        where: { id: balance.id, version: balance.version },
+        data: { quantity: balanceAfter, version: balance.version + 1 },
+      });
+      if (updated.count === 0) {
+        throw new ORPCError('CONFLICT', { message: MESSAGES.conflict });
       }
-
-      const movement = await tx.stockMovement.create({
-        data: {
-          productId: input.productId,
-          storeId: input.storeId,
-          delta: input.delta,
-          balanceBefore,
-          balanceAfter,
-          type: input.type,
-          sourceDocument: input.sourceDocument,
-          actorId: input.actorId,
-        },
-      });
-
-      if (balance) {
-        // Optimistic lock: the update only matches while the version is unchanged. A concurrent
-        // writer that already bumped it leaves zero rows affected, and we lose the race (INV-04).
-        const updated = await tx.stockBalance.updateMany({
-          where: { id: balance.id, version: balance.version },
-          data: { quantity: balanceAfter, version: balance.version + 1 },
+    } else {
+      // No cache row yet: this movement opens the balance for the pair. The unique (product,
+      // store) constraint is the lock here: if a concurrent first movement created the row
+      // between our read and this write, the create violates it and we lose the race (INV-04).
+      try {
+        await tx.stockBalance.create({
+          data: {
+            productId: input.productId,
+            storeId: input.storeId,
+            quantity: balanceAfter,
+            reorderThreshold: input.reorderThreshold ?? 0,
+            version: 0,
+          },
         });
-        if (updated.count === 0) {
+      } catch (error) {
+        if (isUniqueViolation(error)) {
           throw new ORPCError('CONFLICT', { message: MESSAGES.conflict });
         }
-      } else {
-        // No cache row yet: this movement opens the balance for the pair. The unique (product,
-        // store) constraint is the lock here: if a concurrent first movement created the row
-        // between our read and this write, the create violates it and we lose the race (INV-04).
-        try {
-          await tx.stockBalance.create({
-            data: {
-              productId: input.productId,
-              storeId: input.storeId,
-              quantity: balanceAfter,
-              reorderThreshold: input.reorderThreshold ?? 0,
-              version: 0,
-            },
-          });
-        } catch (error) {
-          if (isUniqueViolation(error)) {
-            throw new ORPCError('CONFLICT', { message: MESSAGES.conflict });
-          }
-          throw error;
-        }
+        throw error;
       }
+    }
 
-      return { movementId: movement.id, balanceBefore, balanceAfter };
-    });
+    return { movementId: movement.id, balanceBefore, balanceAfter };
   }
 }
