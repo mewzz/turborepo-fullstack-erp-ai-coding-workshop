@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  CreateProductSchema,
-  ProductSchema,
-  UpdateProductSchema,
-} from './products.js';
+import { CreateProductSchema, ProductSchema, UpdateProductSchema } from './products.js';
 
 const validProduct = {
   id: 'p1',

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  CreateSupplierSchema,
-  SupplierSchema,
-  UpdateSupplierSchema,
-} from './suppliers.js';
+import { CreateSupplierSchema, SupplierSchema, UpdateSupplierSchema } from './suppliers.js';
 
 const validSupplier = {
   id: 's1',
@@ -20,9 +16,9 @@ describe('SupplierSchema', () => {
   });
 
   it('accepts a supplier with no contact details', () => {
-    expect(
-      SupplierSchema.safeParse({ id: 's1', code: 'SUP01', name: 'บริษัท' }).success,
-    ).toBe(true);
+    expect(SupplierSchema.safeParse({ id: 's1', code: 'SUP01', name: 'บริษัท' }).success).toBe(
+      true,
+    );
   });
 
   it('accepts null contact details', () => {
