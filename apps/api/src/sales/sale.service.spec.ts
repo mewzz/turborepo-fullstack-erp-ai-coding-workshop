@@ -13,6 +13,12 @@ const employee: User = {
   storeId: 'st1',
 };
 const otherStoreEmployee: User = { ...employee, id: 'u2', storeId: 'st2' };
+const manager: User = {
+  id: 'm1',
+  email: 'manager01@erp.local',
+  name: 'Manager One',
+  role: 'MANAGER',
+};
 
 function saleRow(over: Partial<Record<string, unknown>> = {}) {
   return {
@@ -282,5 +288,58 @@ describe('SaleService.confirm', () => {
     await expect(service.confirm(confirmInput, employee)).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
+  });
+});
+
+describe('SaleService.get', () => {
+  it('lets a manager view a sale for any store (consistent with list)', async () => {
+    const prisma = fakePrisma({
+      sale: { findUnique: vi.fn().mockResolvedValue(saleRow({ storeId: 'st9' })) },
+    });
+    const service = await createService(prisma);
+
+    const result = await service.get('sale1', manager);
+
+    expect(result.id).toBe('sale1');
+  });
+
+  it('forbids a store employee viewing another store`s sale', async () => {
+    const prisma = fakePrisma({
+      sale: { findUnique: vi.fn().mockResolvedValue(saleRow({ storeId: 'st1' })) },
+    });
+    const service = await createService(prisma);
+
+    await expect(service.get('sale1', otherStoreEmployee)).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+  });
+
+  it('returns NOT_FOUND for a missing sale', async () => {
+    const prisma = fakePrisma({ sale: { findUnique: vi.fn().mockResolvedValue(null) } });
+    const service = await createService(prisma);
+
+    await expect(service.get('nope', employee)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
+
+describe('SaleService.list', () => {
+  it('scopes a store employee to their own store', async () => {
+    const findMany = vi.fn().mockResolvedValue([saleRow()]);
+    const prisma = fakePrisma({ sale: { findMany } });
+    const service = await createService(prisma);
+
+    await service.list(employee);
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { storeId: 'st1' } }));
+  });
+
+  it('shows a manager every store`s sales', async () => {
+    const findMany = vi.fn().mockResolvedValue([saleRow()]);
+    const prisma = fakePrisma({ sale: { findMany } });
+    const service = await createService(prisma);
+
+    await service.list(manager);
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
   });
 });

@@ -86,6 +86,15 @@ export class SaleService {
     }
   }
 
+  /**
+   * Who may view a sale for `storeId`. A store employee sees only their assigned store; every other
+   * role sees any store. Kept consistent with `list` so a role can never see a sale in the list it
+   * is then forbidden to open.
+   */
+  private canView(user: User, storeId: string): boolean {
+    return user.role !== 'STORE_EMPLOYEE' || (!!user.storeId && user.storeId === storeId);
+  }
+
   /** Snapshot the name and current selling price for each line, rejecting unknown/inactive products. */
   private async snapshotLines(lines: CreateSale['lines']) {
     const products = await this.prisma.product.findMany({
@@ -125,12 +134,15 @@ export class SaleService {
   async get(id: string, user: User): Promise<Sale> {
     const row = await this.prisma.sale.findUnique({ where: { id }, include: { lines: true } });
     if (!row) throw new ORPCError('NOT_FOUND', { message: MESSAGES.notFound });
-    this.assertCanSell(user, row.storeId);
+    if (!this.canView(user, row.storeId)) {
+      throw new ORPCError('FORBIDDEN', { message: MESSAGES.forbidden });
+    }
     return this.toSale(row);
   }
 
   async list(user: User): Promise<Sale[]> {
-    // A store employee sees their own store only; with no assigned store they see nothing.
+    // A store employee sees their own store only; with no assigned store they see nothing. Every
+    // other role sees all stores — matching `canView`, so the list never shows a sale `get` denies.
     if (user.role === 'STORE_EMPLOYEE' && !user.storeId) return [];
     const rows = await this.prisma.sale.findMany({
       where: user.role === 'STORE_EMPLOYEE' ? { storeId: user.storeId! } : {},
