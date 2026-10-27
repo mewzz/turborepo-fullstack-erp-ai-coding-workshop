@@ -194,7 +194,11 @@ class FakePrisma {
         delta: input.delta,
         sourceDocument: input.sourceDocument,
       });
-      return { movementId: `mv-${this.state.movements.length}`, balanceBefore: before, balanceAfter: before + input.delta };
+      return {
+        movementId: `mv-${this.state.movements.length}`,
+        balanceBefore: before,
+        balanceAfter: before + input.delta,
+      };
     },
   };
 }
@@ -349,7 +353,10 @@ describe('GoodsReceiptService.receive: quantities (AC-03, GR-02)', () => {
     const { service, fake } = await setup();
     await receive(service, employee, [{ productId: 'p1', quantity: 6 }], 'k1');
 
-    await expectCode(receive(service, employee, [{ productId: 'p1', quantity: 5 }], 'k2'), 'BAD_REQUEST');
+    await expectCode(
+      receive(service, employee, [{ productId: 'p1', quantity: 5 }], 'k2'),
+      'BAD_REQUEST',
+    );
 
     expect(fake.state.stock['p1@st1']).toBe(6);
     expect(fake.state.receipts).toHaveLength(1);
@@ -374,24 +381,32 @@ describe('GoodsReceiptService.receive: quantities (AC-03, GR-02)', () => {
 });
 
 describe('GoodsReceiptService.receive: eligibility (AC-04, GR-01)', () => {
-  it.each(['APPROVED', 'PARTIALLY_RECEIVED'] as const)('allows receiving a %s order', async (status) => {
-    const { service } = await setup([freshOrder({ status })]);
+  it.each(['APPROVED', 'PARTIALLY_RECEIVED'] as const)(
+    'allows receiving a %s order',
+    async (status) => {
+      const { service } = await setup([freshOrder({ status })]);
 
-    await expect(receive(service, employee, [{ productId: 'p1', quantity: 1 }])).resolves.toBeDefined();
-  });
+      await expect(
+        receive(service, employee, [{ productId: 'p1', quantity: 1 }]),
+      ).resolves.toBeDefined();
+    },
+  );
 
   it.each(['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CANCELLED', 'COMPLETED'] as const)(
     'rejects receiving a %s order',
     async (status) => {
       const { service, fake } = await setup([freshOrder({ status })]);
 
-      await expectCode(receive(service, employee, [{ productId: 'p1', quantity: 1 }]), 'BAD_REQUEST');
+      await expectCode(
+        receive(service, employee, [{ productId: 'p1', quantity: 1 }]),
+        'BAD_REQUEST',
+      );
 
       expect(fake.state.stock).toEqual({});
     },
   );
 
-  it("rejects an employee from another store, even with a valid order and key (NFR-01)", async () => {
+  it('rejects an employee from another store, even with a valid order and key (NFR-01)', async () => {
     const { service, fake } = await setup();
 
     await expectCode(

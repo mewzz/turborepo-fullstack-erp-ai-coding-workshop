@@ -79,9 +79,9 @@ describe('GoodsReceiptsController', () => {
     const get = vi.fn().mockResolvedValue(receipt);
     const controller = await createController({ listForOrder, get });
 
-    await expect(call(controller.listForOrder(employee), { purchaseOrderId: 'po1' })).resolves.toEqual([
-      receipt,
-    ]);
+    await expect(
+      call(controller.listForOrder(employee), { purchaseOrderId: 'po1' }),
+    ).resolves.toEqual([receipt]);
     await expect(call(controller.get(employee), { id: 'gr1' })).resolves.toEqual(receipt);
     expect(listForOrder).toHaveBeenCalledWith('po1', employee);
     expect(get).toHaveBeenCalledWith('gr1', employee);

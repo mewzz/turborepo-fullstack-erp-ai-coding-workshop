@@ -1,6 +1,7 @@
 import type { PurchaseOrder, PurchaseOrderStatus } from '@erp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { PurchaseOrderForm } from '@/components/purchase-order-form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -123,6 +124,12 @@ function OrderRow({ order, onEdit }: { order: PurchaseOrder; onEdit: () => void 
   const canCancel =
     (order.status === 'DRAFT' || order.status === 'PENDING_APPROVAL') && (isCreator || isManager);
 
+  const isEmployee = user?.role === 'STORE_EMPLOYEE';
+  const receivable = order.status === 'APPROVED' || order.status === 'PARTIALLY_RECEIVED';
+  const canView = receivable || order.status === 'COMPLETED';
+  /** A store employee receives; everyone else, and finished orders, just view (GR-01). */
+  const receiveLabel = isEmployee && receivable ? 'รับสินค้า' : 'ดูการรับสินค้า';
+
   const pending = submit.isPending || approve.isPending || reject.isPending || cancel.isPending;
   const error = submit.error ?? approve.error ?? reject.error ?? cancel.error;
 
@@ -194,6 +201,15 @@ function OrderRow({ order, onEdit }: { order: PurchaseOrder; onEdit: () => void 
           >
             ยกเลิก
           </Button>
+        )}
+        {canView && (
+          <Link
+            className="text-sm underline underline-offset-4"
+            to={`/purchase-orders/${order.id}/receive`}
+            aria-label={`${receiveLabel} ${order.number}`}
+          >
+            {receiveLabel}
+          </Link>
         )}
         {error && (
           <span role="alert" className="text-sm text-destructive">

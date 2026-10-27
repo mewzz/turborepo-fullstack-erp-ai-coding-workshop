@@ -1,5 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createQueryClient } from '@/lib/query-client';
 import { mockApi } from '@/test/mock-api';
@@ -50,9 +51,11 @@ const reference = {
 
 function renderList() {
   return render(
-    <QueryClientProvider client={createQueryClient()}>
-      <PurchaseOrderList />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={createQueryClient()}>
+        <PurchaseOrderList />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -243,5 +246,56 @@ describe('PurchaseOrderList', () => {
     expect(await screen.findByText('2026-02-01')).toBeInTheDocument();
     expect(updateBody).toMatchObject({ expectedReceiptDate: '2026-02-01' });
     expect(updateBody?.lines).toBeDefined();
+  });
+
+  describe('goods receiving links (GR-01)', () => {
+    const employee = {
+      id: 'e1',
+      email: 'staff01@erp.local',
+      name: 'Staff One',
+      role: 'STORE_EMPLOYEE',
+      storeId: 'st1',
+    };
+
+    it('offers a store employee a receive link on an approved or partially received order', async () => {
+      mockApi({
+        'GET /auth/me': { user: employee },
+        'GET /purchase-orders': [
+          draftOrder({ id: 'po1', number: 'PO-0001', status: 'APPROVED' }),
+          draftOrder({ id: 'po2', number: 'PO-0002', status: 'PARTIALLY_RECEIVED' }),
+        ],
+        ...reference,
+      });
+
+      renderList();
+
+      const first = await screen.findByRole('link', { name: 'รับสินค้า PO-0001' });
+      expect(first).toHaveAttribute('href', '/purchase-orders/po1/receive');
+      expect(screen.getByRole('link', { name: 'รับสินค้า PO-0002' })).toHaveAttribute(
+        'href',
+        '/purchase-orders/po2/receive',
+      );
+    });
+
+    it('offers other roles a view link, and completed orders a view link for everyone', async () => {
+      mockApi({
+        'GET /auth/me': { user: manager },
+        'GET /purchase-orders': [
+          draftOrder({ id: 'po1', number: 'PO-0001', status: 'APPROVED' }),
+          draftOrder({ id: 'po3', number: 'PO-0003', status: 'COMPLETED' }),
+          draftOrder({ id: 'po4', number: 'PO-0004', status: 'DRAFT' }),
+        ],
+        ...reference,
+      });
+
+      renderList();
+
+      expect(
+        await screen.findByRole('link', { name: 'ดูการรับสินค้า PO-0001' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'ดูการรับสินค้า PO-0003' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /PO-0004/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /^รับสินค้า / })).not.toBeInTheDocument();
+    });
   });
 });
