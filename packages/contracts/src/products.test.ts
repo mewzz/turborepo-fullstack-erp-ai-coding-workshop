@@ -24,6 +24,27 @@ describe('ProductSchema', () => {
     expect(ProductSchema.safeParse({ ...validProduct, sellingPrice: 0 }).success).toBe(true);
   });
 
+  it('rejects a selling price with more than two decimal places', () => {
+    expect(ProductSchema.safeParse({ ...validProduct, sellingPrice: 10.555 }).success).toBe(false);
+  });
+
+  it('accepts a selling price with exactly two decimal places', () => {
+    expect(ProductSchema.safeParse({ ...validProduct, sellingPrice: 10.55 }).success).toBe(true);
+  });
+
+  it('rejects a selling price beyond DECIMAL(12,2) range', () => {
+    // DECIMAL(12,2) stores at most 10 integer digits; 10_000_000_000 overflows in Postgres.
+    expect(ProductSchema.safeParse({ ...validProduct, sellingPrice: 10_000_000_000 }).success).toBe(
+      false,
+    );
+  });
+
+  it('accepts the largest valid DECIMAL(12,2) selling price', () => {
+    expect(
+      ProductSchema.safeParse({ ...validProduct, sellingPrice: 9_999_999_999.99 }).success,
+    ).toBe(true);
+  });
+
   it('rejects an empty SKU', () => {
     expect(ProductSchema.safeParse({ ...validProduct, sku: '' }).success).toBe(false);
   });

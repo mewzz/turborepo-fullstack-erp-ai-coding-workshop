@@ -1,6 +1,20 @@
 import { oc } from '@orpc/contract';
 import * as z from 'zod';
 
+/**
+ * Thai baht stored as `DECIMAL(12,2)`: never negative, at most two decimal places,
+ * and strictly below 10^10 so the ten integer digits fit the column. Bounding it here,
+ * in the contract, keeps an out-of-range price a 400 at the edge instead of an unmapped
+ * Postgres 500 at the database.
+ */
+const SellingPriceSchema = z
+  .number()
+  .nonnegative()
+  .lt(10_000_000_000, 'Selling price must be below 10,000,000,000')
+  .refine((value) => Math.round(value * 100) === value * 100, {
+    message: 'Selling price cannot have more than two decimal places',
+  });
+
 /** A catalogue item. One base unit per SKU; stock is tracked per store elsewhere. */
 export const ProductSchema = z.object({
   id: z.string(),
@@ -11,7 +25,7 @@ export const ProductSchema = z.object({
   /** The base unit of measure, e.g. "ชิ้น" (piece). */
   unit: z.string().min(1),
   /** Thai baht, two decimals. Never negative. */
-  sellingPrice: z.number().nonnegative(),
+  sellingPrice: SellingPriceSchema,
   /** Deactivated products stay searchable in history but are blocked from new documents. */
   active: z.boolean(),
 });
