@@ -26,6 +26,8 @@ model Store {
   code      String   @unique
   name      String
   users     User[]
+  movements StockMovement[]
+  balances  StockBalance[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -40,6 +42,7 @@ model User {
   /// Store employees are assigned to exactly one store; other roles have none.
   storeId      String?
   store        Store?   @relation(fields: [storeId], references: [id])
+  movements    StockMovement[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -57,8 +60,90 @@ model Product {
   sellingPrice Decimal @db.Decimal(12, 2)
   /// Deactivated products stay searchable in history but are blocked from new documents.
   active Boolean @default(true)
+  movements StockMovement[]
+  balances  StockBalance[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Why a stock movement happened. The source document type is recorded separately.
+enum MovementType {
+  /// Goods received against a purchase order (stock in).
+  GOODS_RECEIPT
+  /// Goods sold (stock out).
+  SALE
+  /// Manual correction by a manager, with a mandatory reason (stock in or out).
+  ADJUSTMENT
+  /// Opening balance set when stock tracking begins (stock in).
+  OPENING
+}
+
+/// An append-only ledger entry: the single source of truth for stock (INV-02).
+///
+/// One row per confirmed increase or decrease. Rows are immutable once written — there is no
+/// `updatedAt` and nothing in the system edits or deletes them. `StockBalance` is a cache derived
+/// from the sum of these rows.
+model StockMovement {
+  id        String       @id @default(cuid())
+  productId String
+  product   Product      @relation(fields: [productId], references: [id])
+  storeId   String
+  store     Store        @relation(fields: [storeId], references: [id])
+  /// Signed change in whole units: positive for stock in, negative for stock out.
+  delta     Int
+  /// Balance of this (product, store) immediately before this movement.
+  balanceBefore Int
+  /// Balance immediately after this movement. Equals balanceBefore + delta, never negative.
+  balanceAfter  Int
+  type      MovementType
+  /// The document this movement was posted from, e.g. "GR-0001" or a manager adjustment reference.
+  /// Free text at this layer; the transaction modules supply their own document numbers.
+  sourceDocument String
+  /// The user who confirmed the movement (INV-02 actor).
+  actorId   String
+  actor     User         @relation(fields: [actorId], references: [id])
+  createdAt DateTime     @default(now())
+
+  @@index([productId, storeId])
+}
+
+/// The derived per-(product, store) stock cache (INV-03).
+///
+/// Exactly one row per product and store. `quantity` equals the opening balance plus the sum of
+/// every `StockMovement` for the pair; it is never negative. `version` is an optimistic-lock marker
+/// bumped on every update so a concurrent confirm that read a stale balance loses the race (INV-04).
+model StockBalance {
+  id               String   @id @default(cuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id])
+  storeId          String
+  store            Store    @relation(fields: [storeId], references: [id])
+  /// Current stock on hand in whole units. Never negative.
+  quantity         Int      @default(0)
+  /// Per-store reorder threshold (MD-01). Low-stock when quantity <= threshold. Never negative.
+  reorderThreshold Int      @default(0)
+  /// Optimistic-lock marker, bumped on every balance update (INV-04).
+  version          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([productId, storeId])
+}
+
+/// A client-supplied idempotency key mapped to the document it produced.
+///
+/// Shared primitive for goods receiving and sales: a retried confirm with the same key returns the
+/// original document instead of posting a second one. The unique constraint on `key` is what makes
+/// the dedupe atomic.
+model IdempotencyKey {
+  id           String   @id @default(cuid())
+  /// The client-supplied key, unique across the organization.
+  key          String   @unique
+  /// What kind of document the key produced, e.g. "GOODS_RECEIPT" or "SALE".
+  documentType String
+  /// The id of the document the first call produced.
+  documentId   String
+  createdAt    DateTime @default(now())
 }
 
 /// A goods supplier a purchase order can reference.
