@@ -49,9 +49,7 @@ describe('StockSearchInputSchema', () => {
   });
 
   it('accepts a query and store filter', () => {
-    expect(
-      StockSearchInputSchema.safeParse({ query: 'SKU001', storeId: 's1' }).success,
-    ).toBe(true);
+    expect(StockSearchInputSchema.safeParse({ query: 'SKU001', storeId: 's1' }).success).toBe(true);
   });
 });
 
