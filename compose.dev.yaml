@@ -1,0 +1,56 @@
+﻿# Dev stack: Postgres in Docker, apps (web + api) on your machine for hot-reload.
+# Usage:
+#   docker compose -f compose.dev.yaml up -d        # start Postgres only
+#   pnpm db:deploy && pnpm db:seed                   # migrate + seed (once)
+#   pnpm dev                                         # run web + api on the host (HMR)
+#   docker compose -f compose.dev.yaml --profile tools up -d studio   # Prisma Studio on http://localhost:5555
+#   docker compose -f compose.dev.yaml down          # stop (add -v to delete the database)
+#
+# The apps read DATABASE_URL (defaults to postgresql://erp:erp@localhost:5432/erp),
+# so they connect to this container over the published port.
+#
+# Every value below has a default; override any of them in a .env file (see .env.example).
+
+name: erp-workshop-dev
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-erp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-erp}
+      POSTGRES_DB: ${POSTGRES_DB:-erp}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Optional: browse the database. Runs Prisma Studio against the Postgres above,
+  # using the same dev image as the full stack so no Node is needed on your machine.
+  studio:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    image: erp-workshop-dev
+    profiles: [tools]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - pnpm-store:/pnpm/store
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-erp}:${POSTGRES_PASSWORD:-erp}@postgres:5432/${POSTGRES_DB:-erp}
+    command: sh -c "node docker/studio-proxy.mjs & pnpm --filter @erp/database exec prisma studio --port 5556 --browser none"
+    ports:
+      - '5555:5555'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  pnpm-store:

@@ -21,6 +21,25 @@ const demoUsers = [
 ];
 const DEMO_PASSWORD = 'password';
 
+// Demo catalogue (TOR §8): SKU001-003 with a reorder threshold of 3 (thresholds are per store,
+// added in a later slice). Prices are the selling prices used across the acceptance scenarios.
+const products = [
+  { sku: 'SKU001', name: 'สินค้า 001', category: 'ทั่วไป', unit: 'ชิ้น', sellingPrice: '45.00' },
+  { sku: 'SKU002', name: 'สินค้า 002', category: 'ทั่วไป', unit: 'ชิ้น', sellingPrice: '30.00' },
+  { sku: 'SKU003', name: 'สินค้า 003', category: 'ทั่วไป', unit: 'ชิ้น', sellingPrice: '12.50' },
+];
+
+// Demo supplier (TOR §8).
+const suppliers = [
+  {
+    code: 'SUP01',
+    name: 'บริษัท ซัพพลายเออร์ ตัวอย่าง จำกัด',
+    contactName: 'ฝ่ายขาย',
+    contactEmail: 'sales@sup01.local',
+    contactPhone: '021112222',
+  },
+];
+
 async function main() {
   const storesByCode = new Map<string, string>();
   for (const store of stores) {
@@ -49,6 +68,24 @@ async function main() {
   console.log(
     `Seeded ${stores.length} stores and ${demoUsers.length} demo users (password: "${DEMO_PASSWORD}").`,
   );
+
+  for (const product of products) {
+    await prisma.product.upsert({
+      where: { sku: product.sku },
+      update: product,
+      create: product,
+    });
+  }
+
+  for (const supplier of suppliers) {
+    await prisma.supplier.upsert({
+      where: { code: supplier.code },
+      update: supplier,
+      create: supplier,
+    });
+  }
+
+  console.log(`Seeded ${products.length} products and ${suppliers.length} suppliers.`);
 }
 
 try {

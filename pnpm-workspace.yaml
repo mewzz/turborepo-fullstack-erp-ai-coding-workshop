@@ -2,6 +2,12 @@ packages:
   - apps/*
   - packages/*
 
+# Hoist dependencies into a flat node_modules instead of the deep .pnpm/<pkg>@<peer-hash>/...
+# layout. Those nested paths exceed Windows' 260-char limit and get truncated/corrupted
+# unless long-path support is enabled system-wide. Hoisting keeps paths short so a host
+# install (pnpm dev:local) works on Windows without admin rights.
+nodeLinker: hoisted
+
 # node_modules is shared between your machine and the Docker containers (bind mount).
 # Install native binaries (esbuild, rolldown, lightningcss, ...) for every platform
 # so the same install works on macOS, Windows/WSL and the Linux containers.
