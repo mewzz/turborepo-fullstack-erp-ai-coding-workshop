@@ -8,6 +8,7 @@ import { HealthModule } from './health/health.module.js';
 import { InventoryModule } from './inventory/inventory.module.js';
 import { OpenApiModule } from './openapi/openapi.module.js';
 import { ProductsModule } from './products/products.module.js';
+import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module.js';
 import { SuppliersModule } from './suppliers/suppliers.module.js';
 
 @Module({
@@ -25,6 +26,7 @@ import { SuppliersModule } from './suppliers/suppliers.module.js';
     InventoryModule,
     OpenApiModule,
     ProductsModule,
+    PurchaseOrdersModule,
     SuppliersModule,
   ],
 })
