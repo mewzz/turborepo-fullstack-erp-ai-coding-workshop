@@ -5,6 +5,7 @@ import { LoginPage } from '@/routes/login';
 import { ProductsPage } from '@/routes/products';
 import { PurchaseOrdersPage } from '@/routes/purchase-orders';
 import { RootLayout } from '@/routes/root-layout';
+import { StockPage } from '@/routes/stock';
 import { SuppliersPage } from '@/routes/suppliers';
 
 export const router = createBrowserRouter([
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <HomePage /> },
           { path: 'products', element: <ProductsPage /> },
+          { path: 'stock', element: <StockPage /> },
           { path: 'suppliers', element: <SuppliersPage /> },
           { path: 'purchase-orders', element: <PurchaseOrdersPage /> },
         ],
