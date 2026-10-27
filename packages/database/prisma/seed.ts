@@ -148,6 +148,46 @@ async function main() {
   }
 
   console.log(`Seeded ${balanceCount} stock balances (threshold ${REORDER_THRESHOLD}).`);
+
+  // A demo draft purchase order (T5) so the lifecycle screen has something to act on. Re-runnable:
+  // keyed on its document number, with lines snapshotting the product name and a purchase price.
+  const buyer = await prisma.user.findUniqueOrThrow({ where: { email: 'buyer01@erp.local' } });
+  const supplierRow = await prisma.supplier.findUniqueOrThrow({ where: { code: 'SUP01' } });
+  const centralStoreId = storesByCode.get('B01');
+  if (!centralStoreId) throw new Error('Missing demo store B01 for the demo purchase order');
+  const demoLines = [
+    { sku: 'SKU001', quantity: 10, purchasePrice: '25.00' },
+    { sku: 'SKU002', quantity: 5, purchasePrice: '18.00' },
+  ];
+  const existingOrder = await prisma.purchaseOrder.findUnique({ where: { number: 'PO-0001' } });
+  if (!existingOrder) {
+    await prisma.purchaseOrder.create({
+      data: {
+        number: 'PO-0001',
+        supplierId: supplierRow.id,
+        destinationStoreId: centralStoreId,
+        expectedReceiptDate: '2026-01-15',
+        status: 'DRAFT',
+        createdById: buyer.id,
+        lines: {
+          create: await Promise.all(
+            demoLines.map(async (line) => {
+              const product = await prisma.product.findUniqueOrThrow({
+                where: { sku: line.sku },
+              });
+              return {
+                productId: product.id,
+                productName: product.name,
+                purchasePrice: line.purchasePrice,
+                quantity: line.quantity,
+              };
+            }),
+          ),
+        },
+      },
+    });
+  }
+  console.log('Seeded 1 demo purchase order (PO-0001, draft).');
 }
 
 try {

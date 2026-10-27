@@ -28,6 +28,7 @@ model Store {
   users     User[]
   movements StockMovement[]
   balances  StockBalance[]
+  purchaseOrders PurchaseOrder[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -43,6 +44,7 @@ model User {
   storeId      String?
   store        Store?   @relation(fields: [storeId], references: [id])
   movements    StockMovement[]
+  purchaseOrders PurchaseOrder[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -62,6 +64,7 @@ model Product {
   active Boolean @default(true)
   movements StockMovement[]
   balances  StockBalance[]
+  orderLines PurchaseOrderLine[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -155,6 +158,67 @@ model Supplier {
   contactName  String?
   contactEmail String?
   contactPhone String?
+  orders PurchaseOrder[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// The purchase-order lifecycle (PO-02/03/04): a guarded state machine with no effect on stock.
+/// `PARTIALLY_RECEIVED` and `COMPLETED` are reached only by goods receiving (T6), never by T5.
+enum PurchaseOrderStatus {
+  /// Being drafted or edited by its purchasing-officer author (PO-01).
+  DRAFT
+  /// Submitted by the author, awaiting a manager decision (PO-02).
+  PENDING_APPROVAL
+  /// Approved by a manager; lines, quantities, prices and destination store are frozen (PO-03).
+  APPROVED
+  /// Some but not all goods received (set by goods receiving, T6).
+  PARTIALLY_RECEIVED
+  /// All goods received (set by goods receiving, T6).
+  COMPLETED
+  /// Rejected by a manager with a reason; stays viewable, needs a new order to resubmit (PO-03).
+  REJECTED
+  /// Cancelled by the author or a manager with a reason, from Draft or Pending only (PO-04).
+  CANCELLED
+}
+
+/// A purchase order header. Guarded transitions live in the API, never touching stock (T5).
+model PurchaseOrder {
+  id     String @id @default(cuid())
+  /// Human-facing document number, unique org-wide, e.g. "PO-0001".
+  number String @unique
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  /// The store the goods are destined for; frozen once approved (PO-03).
+  destinationStoreId String
+  destinationStore   Store  @relation(fields: [destinationStoreId], references: [id])
+  /// ISO date (YYYY-MM-DD) the goods are expected.
+  expectedReceiptDate String
+  status PurchaseOrderStatus @default(DRAFT)
+  /// The purchasing officer who created the order (authorship check for submit/cancel).
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+  /// Mandatory reason captured on reject or cancel (PO-03/04); null otherwise.
+  reason String?
+  lines  PurchaseOrderLine[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A purchase-order line. Product name and purchase price are snapshotted at creation so later
+/// catalogue edits never change a historical order. No product repeats within one order (PO-01).
+model PurchaseOrderLine {
+  id              String @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product @relation(fields: [productId], references: [id])
+  /// Snapshot of the product name at creation time.
+  productName     String
+  /// Snapshot of the agreed purchase price at creation time. Thai baht, two decimals.
+  purchasePrice   Decimal @db.Decimal(12, 2)
+  /// Whole units, strictly positive (PO-01).
+  quantity        Int
+
+  @@unique([purchaseOrderId, productId])
 }

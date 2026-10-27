@@ -3,6 +3,7 @@ import { RequireAuth } from '@/components/require-auth';
 import { HomePage } from '@/routes/home';
 import { LoginPage } from '@/routes/login';
 import { ProductsPage } from '@/routes/products';
+import { PurchaseOrdersPage } from '@/routes/purchase-orders';
 import { RootLayout } from '@/routes/root-layout';
 import { SuppliersPage } from '@/routes/suppliers';
 
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
           { index: true, element: <HomePage /> },
           { path: 'products', element: <ProductsPage /> },
           { path: 'suppliers', element: <SuppliersPage /> },
+          { path: 'purchase-orders', element: <PurchaseOrdersPage /> },
         ],
       },
     ],
