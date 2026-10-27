@@ -113,18 +113,22 @@ async function main() {
       const productId = productsBySku.get(sku);
       if (!productId) throw new Error(`Unknown SKU "${sku}" in opening stock`);
 
-      await prisma.stockBalance.upsert({
+      // `quantity` is a derived balance, so it is set only when the row is first created. On a
+      // re-seed we refresh the threshold (configuration) but never reset a quantity that real
+      // movements may have changed — resetting it would break INV-03 reconciliation.
+      const existing = await prisma.stockBalance.findUnique({
         where: { productId_storeId: { productId, storeId } },
-        update: { quantity, reorderThreshold: REORDER_THRESHOLD },
-        create: { productId, storeId, quantity, reorderThreshold: REORDER_THRESHOLD, version: 0 },
       });
-      balanceCount++;
-
-      if (quantity > 0) {
-        const existing = await prisma.stockMovement.findFirst({
-          where: { productId, storeId, type: 'OPENING' },
+      if (existing) {
+        await prisma.stockBalance.update({
+          where: { id: existing.id },
+          data: { reorderThreshold: REORDER_THRESHOLD },
         });
-        if (!existing) {
+      } else {
+        await prisma.stockBalance.create({
+          data: { productId, storeId, quantity, reorderThreshold: REORDER_THRESHOLD, version: 0 },
+        });
+        if (quantity > 0) {
           await prisma.stockMovement.create({
             data: {
               productId,
@@ -139,6 +143,7 @@ async function main() {
           });
         }
       }
+      balanceCount++;
     }
   }
 

@@ -37,9 +37,14 @@ export class InventoryController {
   search(@CurrentUser() user: User) {
     return implement(contract.inventory.search).handler(async ({ input }) => {
       // A store employee sees their assigned store only (TOR §2); the requested store, if any,
-      // narrows further but can never widen past it. Other roles see every store.
-      const scopedStoreId =
-        user.role === 'STORE_EMPLOYEE' && user.storeId ? user.storeId : input.storeId;
+      // narrows further but can never widen past it. We scope by hand rather than with
+      // `@StoreScoped` because the store id is an optional filter here, not a required param the
+      // decorator could read. An employee with no assigned store sees nothing, never every store.
+      let scopedStoreId = input.storeId;
+      if (user.role === 'STORE_EMPLOYEE') {
+        if (!user.storeId) return [];
+        scopedStoreId = user.storeId;
+      }
 
       const rows = await this.prisma.stockBalance.findMany({
         where: {

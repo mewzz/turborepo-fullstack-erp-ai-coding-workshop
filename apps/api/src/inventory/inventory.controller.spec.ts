@@ -111,4 +111,13 @@ describe('InventoryController.search', () => {
       expect.objectContaining({ where: expect.objectContaining({ storeId: 's1' }) }),
     );
   });
+
+  it('returns nothing for a store employee with no assigned store, without querying', async () => {
+    const findMany = vi.fn();
+    const controller = await createController(findMany);
+    const unassigned: User = { ...employee, storeId: null };
+
+    await expect(call(controller.search(unassigned), {})).resolves.toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
 });

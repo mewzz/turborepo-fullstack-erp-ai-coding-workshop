@@ -15,6 +15,7 @@ class FakePrisma {
     productId: string;
     storeId: string;
     quantity: number;
+    reorderThreshold: number;
     version: number;
   }[] = [];
   movements: { id: string; productId: string; storeId: string; delta: number }[] = [];
@@ -35,8 +36,19 @@ class FakePrisma {
     create: async ({
       data,
     }: {
-      data: { productId: string; storeId: string; quantity: number; version: number };
+      data: {
+        productId: string;
+        storeId: string;
+        quantity: number;
+        reorderThreshold: number;
+        version: number;
+      };
     }) => {
+      const clash = this.balances.find(
+        (b) => b.productId === data.productId && b.storeId === data.storeId,
+      );
+      // Model the unique (product, store) constraint so the first-movement race is testable.
+      if (clash) throw { code: 'P2002' };
       const row = { id: `bal-${this.seq++}`, ...data };
       this.balances.push(row);
       return row;
@@ -94,6 +106,34 @@ describe('StockMovementService.postMovement', () => {
     expect(prisma.balances).toHaveLength(1);
     expect(onlyBalance(prisma)).toMatchObject({ quantity: 10, version: 0 });
     expect(prisma.movements).toHaveLength(1);
+  });
+
+  it('sets the per-store reorder threshold when it opens the balance', async () => {
+    const prisma = new FakePrisma();
+    const service = await createService(prisma);
+
+    await service.postMovement({ ...base, delta: 10, sourceDocument: 'OPEN', reorderThreshold: 3 });
+
+    expect(onlyBalance(prisma).reorderThreshold).toBe(3);
+  });
+
+  it('maps a first-movement race (unique violation on create) to CONFLICT', async () => {
+    const prisma = new FakePrisma();
+    const service = await createService(prisma);
+    // A concurrent first movement created the row between this call's read and its create.
+    prisma.stockBalance.findUnique = async () => null;
+    prisma.balances.push({
+      id: 'bal-x',
+      productId: 'p1',
+      storeId: 's1',
+      quantity: 5,
+      reorderThreshold: 0,
+      version: 0,
+    });
+
+    await expect(
+      service.postMovement({ ...base, delta: 1, type: 'GOODS_RECEIPT', sourceDocument: 'GR-1' }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
   it('updates the balance and bumps the version on a later movement', async () => {

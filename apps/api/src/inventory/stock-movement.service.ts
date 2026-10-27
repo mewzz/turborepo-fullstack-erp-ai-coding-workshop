@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { MovementType } from '@erp/contracts';
 import { ORPCError } from '@orpc/nest';
+import { isUniqueViolation } from '../database/prisma-errors.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 /** The actor, document and change a single movement records. */
@@ -14,6 +15,11 @@ export interface PostMovementInput {
   sourceDocument: string;
   /** The user confirming the movement (INV-02 actor). */
   actorId: string;
+  /**
+   * The per-store reorder threshold to set when this movement opens a new balance (MD-01). Ignored
+   * once a balance exists. Omitted means 0, matching the `StockBalance.reorderThreshold` default.
+   */
+  reorderThreshold?: number;
 }
 
 /** The ledger row plus the balance it produced, returned to the caller that posted it. */
@@ -76,15 +82,25 @@ export class StockMovementService {
           throw new ORPCError('CONFLICT', { message: MESSAGES.conflict });
         }
       } else {
-        // No cache row yet: this movement opens the balance for the pair.
-        await tx.stockBalance.create({
-          data: {
-            productId: input.productId,
-            storeId: input.storeId,
-            quantity: balanceAfter,
-            version: 0,
-          },
-        });
+        // No cache row yet: this movement opens the balance for the pair. The unique (product,
+        // store) constraint is the lock here: if a concurrent first movement created the row
+        // between our read and this write, the create violates it and we lose the race (INV-04).
+        try {
+          await tx.stockBalance.create({
+            data: {
+              productId: input.productId,
+              storeId: input.storeId,
+              quantity: balanceAfter,
+              reorderThreshold: input.reorderThreshold ?? 0,
+              version: 0,
+            },
+          });
+        } catch (error) {
+          if (isUniqueViolation(error)) {
+            throw new ORPCError('CONFLICT', { message: MESSAGES.conflict });
+          }
+          throw error;
+        }
       }
 
       return { movementId: movement.id, balanceBefore, balanceAfter };
