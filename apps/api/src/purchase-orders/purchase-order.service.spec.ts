@@ -29,7 +29,13 @@ function orderRow(over: Partial<Record<string, unknown>> = {}) {
     createdById: 'u1',
     reason: null,
     lines: [
-      { id: 'l1', productId: 'p1', productName: 'สินค้า 001', purchasePrice: '25.50', quantity: 10 },
+      {
+        id: 'l1',
+        productId: 'p1',
+        productName: 'สินค้า 001',
+        purchasePrice: '25.50',
+        quantity: 10,
+      },
     ],
     ...over,
   };
@@ -59,9 +65,7 @@ describe('PurchaseOrderService.create', () => {
     const create = vi.fn().mockResolvedValue(orderRow());
     const { service } = await createService({
       product: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([{ id: 'p1', name: 'สินค้า 001', active: true }]),
+        findMany: vi.fn().mockResolvedValue([{ id: 'p1', name: 'สินค้า 001', active: true }]),
       },
       purchaseOrder: { create, count: vi.fn().mockResolvedValue(0) },
     });

@@ -115,8 +115,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
   const canCancel =
     (order.status === 'DRAFT' || order.status === 'PENDING_APPROVAL') && (isCreator || isManager);
 
-  const pending =
-    submit.isPending || approve.isPending || reject.isPending || cancel.isPending;
+  const pending = submit.isPending || approve.isPending || reject.isPending || cancel.isPending;
   const error = submit.error ?? approve.error ?? reject.error ?? cancel.error;
 
   /** Ask for a mandatory reason; cancel the action if the user dismisses or leaves it blank. */
@@ -138,11 +137,7 @@ function OrderRow({ order }: { order: PurchaseOrder }) {
       </td>
       <td className="space-x-2 px-4 py-2 whitespace-nowrap">
         {isOfficer && isCreator && order.status === 'DRAFT' && (
-          <Button
-            size="sm"
-            disabled={pending}
-            onClick={() => submit.mutate({ id: order.id })}
-          >
+          <Button size="sm" disabled={pending} onClick={() => submit.mutate({ id: order.id })}>
             ส่งอนุมัติ
           </Button>
         )}

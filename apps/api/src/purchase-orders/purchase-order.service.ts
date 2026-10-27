@@ -1,10 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  CreatePurchaseOrder,
-  PurchaseOrder,
-  UpdatePurchaseOrder,
-  User,
-} from '@erp/contracts';
+import type { CreatePurchaseOrder, PurchaseOrder, UpdatePurchaseOrder, User } from '@erp/contracts';
 import { ORPCError } from '@orpc/nest';
 import { PrismaService } from '../database/prisma.service.js';
 import {

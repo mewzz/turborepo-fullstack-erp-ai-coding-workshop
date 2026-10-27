@@ -27,7 +27,9 @@ const order: PurchaseOrder = {
   status: 'DRAFT',
   createdById: 'u1',
   reason: null,
-  lines: [{ id: 'l1', productId: 'p1', productName: 'สินค้า 001', purchasePrice: 25.5, quantity: 10 }],
+  lines: [
+    { id: 'l1', productId: 'p1', productName: 'สินค้า 001', purchasePrice: 25.5, quantity: 10 },
+  ],
 };
 
 const createInput = {
@@ -75,9 +77,7 @@ describe('PurchaseOrdersController', () => {
   });
 
   it('submits via the transition service', async () => {
-    const transition = vi
-      .fn()
-      .mockResolvedValue({ ...order, status: 'PENDING_APPROVAL' });
+    const transition = vi.fn().mockResolvedValue({ ...order, status: 'PENDING_APPROVAL' });
     const controller = await createController({ transition });
 
     await call(controller.submit(officer), { id: 'po1' });

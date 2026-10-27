@@ -16,8 +16,6 @@ describe('StoresController', () => {
     const controller = moduleRef.get(StoresController);
 
     await expect(call(controller.list(), undefined)).resolves.toEqual([store]);
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: { code: 'asc' } }),
-    );
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { code: 'asc' } }));
   });
 });

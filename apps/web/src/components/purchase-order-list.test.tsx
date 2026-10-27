@@ -5,7 +5,12 @@ import { createQueryClient } from '@/lib/query-client';
 import { mockApi } from '@/test/mock-api';
 import { PurchaseOrderList } from './purchase-order-list';
 
-const officer = { id: 'u1', email: 'buyer01@erp.local', name: 'Buyer One', role: 'PURCHASING_OFFICER' };
+const officer = {
+  id: 'u1',
+  email: 'buyer01@erp.local',
+  name: 'Buyer One',
+  role: 'PURCHASING_OFFICER',
+};
 const manager = { id: 'm1', email: 'manager01@erp.local', name: 'Manager One', role: 'MANAGER' };
 
 const supplier = { id: 's1', code: 'SUP01', name: 'ซัพพลายเออร์ 1' };
