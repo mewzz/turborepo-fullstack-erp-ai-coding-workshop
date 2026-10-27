@@ -43,3 +43,33 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+/// A catalogue item. One base unit per SKU; stock is tracked per store elsewhere.
+model Product {
+  id   String @id @default(cuid())
+  /// Unique org-wide and immutable once a transaction references it (enforced in later slices).
+  sku  String @unique
+  name String
+  category String
+  /// The base unit of measure, e.g. "ชิ้น" (piece), "กล่อง" (box).
+  unit String
+  /// Thai baht, two decimals. Never negative.
+  sellingPrice Decimal @db.Decimal(12, 2)
+  /// Deactivated products stay searchable in history but are blocked from new documents.
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A goods supplier a purchase order can reference.
+model Supplier {
+  id   String @id @default(cuid())
+  /// Unique org-wide.
+  code String @unique
+  name String
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
