@@ -2,11 +2,16 @@ import { Controller } from '@nestjs/common';
 import { contract, type Product } from '@erp/contracts';
 import { Implement, implement, ORPCError } from '@orpc/nest';
 import { Roles } from '../auth/auth.decorators.js';
-import { isRecordNotFound, isUniqueViolation } from '../database/prisma-errors.js';
+import { mapWriteErrors } from '../database/prisma-errors.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 /** A Prisma Product row, where sellingPrice is a Decimal we serialize to a number. */
 type ProductRow = Omit<Product, 'sellingPrice'> & { sellingPrice: { toString(): string } };
+
+const MESSAGES = {
+  conflict: 'รหัสสินค้า (SKU) นี้มีอยู่แล้ว',
+  notFound: 'ไม่พบสินค้า',
+};
 
 /** The contract exposes sellingPrice as a plain number; Prisma stores it as a Decimal. */
 function toProduct(row: ProductRow): Product {
@@ -29,7 +34,7 @@ export class ProductsController {
   get() {
     return implement(contract.products.get).handler(async ({ input }) => {
       const row = await this.prisma.product.findUnique({ where: { id: input.id } });
-      if (!row) throw new ORPCError('NOT_FOUND', { message: 'ไม่พบสินค้า' });
+      if (!row) throw new ORPCError('NOT_FOUND', { message: MESSAGES.notFound });
       return toProduct(row);
     });
   }
@@ -38,15 +43,8 @@ export class ProductsController {
   @Implement(contract.products.create)
   create() {
     return implement(contract.products.create).handler(async ({ input }) => {
-      try {
-        const row = await this.prisma.product.create({ data: input });
-        return toProduct(row);
-      } catch (error) {
-        if (isUniqueViolation(error)) {
-          throw new ORPCError('CONFLICT', { message: 'รหัสสินค้า (SKU) นี้มีอยู่แล้ว' });
-        }
-        throw error;
-      }
+      const row = await mapWriteErrors(() => this.prisma.product.create({ data: input }), MESSAGES);
+      return toProduct(row);
     });
   }
 
@@ -55,13 +53,11 @@ export class ProductsController {
   update() {
     return implement(contract.products.update).handler(async ({ input }) => {
       const { id, ...data } = input;
-      try {
-        const row = await this.prisma.product.update({ where: { id }, data });
-        return toProduct(row);
-      } catch (error) {
-        if (isRecordNotFound(error)) throw new ORPCError('NOT_FOUND', { message: 'ไม่พบสินค้า' });
-        throw error;
-      }
+      const row = await mapWriteErrors(
+        () => this.prisma.product.update({ where: { id }, data }),
+        MESSAGES,
+      );
+      return toProduct(row);
     });
   }
 
@@ -82,12 +78,10 @@ export class ProductsController {
   }
 
   private async setActive(id: string, active: boolean): Promise<Product> {
-    try {
-      const row = await this.prisma.product.update({ where: { id }, data: { active } });
-      return toProduct(row);
-    } catch (error) {
-      if (isRecordNotFound(error)) throw new ORPCError('NOT_FOUND', { message: 'ไม่พบสินค้า' });
-      throw error;
-    }
+    const row = await mapWriteErrors(
+      () => this.prisma.product.update({ where: { id }, data: { active } }),
+      MESSAGES,
+    );
+    return toProduct(row);
   }
 }

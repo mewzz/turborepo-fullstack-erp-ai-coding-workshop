@@ -116,4 +116,60 @@ describe('ProductList', () => {
 
     expect(screen.queryByLabelText('รหัสสินค้า (SKU)')).not.toBeInTheDocument();
   });
+
+  it('lets an administrator edit a product (not the SKU)', async () => {
+    let products = [product];
+    let patchBody: Record<string, unknown> | undefined;
+    const fetch = vi.fn(async (request: Request) => {
+      const key = `${request.method} ${new URL(request.url).pathname.replace(/^\/api/, '')}`;
+      if (key === 'GET /auth/me') return Response.json({ user: admin });
+      if (key === 'GET /products') return Response.json(products);
+      if (key === 'PATCH /products/p1') {
+        patchBody = (await request.json()) as Record<string, unknown>;
+        products = [{ ...product, name: patchBody.name as string }];
+        return Response.json(products[0]);
+      }
+      return Response.json({ message: `No mock for ${key}` }, { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    renderList();
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข' }));
+
+    const row = screen.getByText('SKU001').closest('tr')!;
+    fireEvent.change(within(row).getByLabelText('ชื่อสินค้า'), { target: { value: 'สินค้าใหม่' } });
+    fireEvent.click(within(row).getByRole('button', { name: 'บันทึก' }));
+
+    expect(await screen.findByText('สินค้าใหม่')).toBeInTheDocument();
+    expect(patchBody).toMatchObject({ name: 'สินค้าใหม่' });
+    expect(patchBody && 'sku' in patchBody).toBe(false);
+  });
+
+  it('shows the API error message when a create fails', async () => {
+    mockApi({
+      'GET /auth/me': { user: admin },
+      'GET /products': [],
+      'POST /products': new Response(
+        JSON.stringify({
+          defined: false,
+          code: 'CONFLICT',
+          status: 409,
+          message: 'รหัสสินค้า (SKU) นี้มีอยู่แล้ว',
+        }),
+        { status: 409, headers: { 'content-type': 'application/json' } },
+      ),
+    });
+
+    renderList();
+    await screen.findByText('ยังไม่มีสินค้า');
+
+    fireEvent.change(screen.getByLabelText('รหัสสินค้า (SKU)'), { target: { value: 'SKU001' } });
+    fireEvent.change(screen.getByLabelText('ชื่อสินค้า'), { target: { value: 'ซ้ำ' } });
+    fireEvent.change(screen.getByLabelText('หมวดหมู่'), { target: { value: 'ทั่วไป' } });
+    fireEvent.change(screen.getByLabelText('หน่วย'), { target: { value: 'ชิ้น' } });
+    fireEvent.change(screen.getByLabelText('ราคาขาย (บาท)'), { target: { value: '45' } });
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มสินค้า' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('รหัสสินค้า (SKU) นี้มีอยู่แล้ว');
+  });
 });

@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createQueryClient } from '@/lib/query-client';
 import { mockApi } from '@/test/mock-api';
@@ -93,5 +93,35 @@ describe('SupplierList', () => {
       contactEmail: 'sales@sup01.local',
       contactPhone: '021112222',
     });
+  });
+
+  it('lets an administrator edit a supplier (not the code)', async () => {
+    let suppliers = [supplier];
+    let patchBody: Record<string, unknown> | undefined;
+    const fetch = vi.fn(async (request: Request) => {
+      const key = `${request.method} ${new URL(request.url).pathname.replace(/^\/api/, '')}`;
+      if (key === 'GET /auth/me') return Response.json({ user: admin });
+      if (key === 'GET /suppliers') return Response.json(suppliers);
+      if (key === 'PATCH /suppliers/s1') {
+        patchBody = (await request.json()) as Record<string, unknown>;
+        suppliers = [{ ...supplier, name: patchBody.name as string }];
+        return Response.json(suppliers[0]);
+      }
+      return Response.json({ message: `No mock for ${key}` }, { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetch);
+
+    renderList();
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข' }));
+
+    const row = screen.getByText('SUP01').closest('tr')!;
+    fireEvent.change(within(row).getByLabelText('ชื่อผู้จัดจำหน่าย'), {
+      target: { value: 'ชื่อใหม่' },
+    });
+    fireEvent.click(within(row).getByRole('button', { name: 'บันทึก' }));
+
+    expect(await screen.findByText('ชื่อใหม่')).toBeInTheDocument();
+    expect(patchBody).toMatchObject({ name: 'ชื่อใหม่' });
+    expect(patchBody && 'code' in patchBody).toBe(false);
   });
 });
