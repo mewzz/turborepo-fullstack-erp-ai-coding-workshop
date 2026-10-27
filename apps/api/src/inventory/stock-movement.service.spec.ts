@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../database/prisma.service.js';
 import { StockMovementService } from './stock-movement.service.js';
 
@@ -200,5 +200,24 @@ describe('StockMovementService.postMovement', () => {
     expect(balance.quantity).toBe(expected);
     expect(balance.quantity).toBe(movedSum);
     expect(balance.quantity).toBeGreaterThanOrEqual(0);
+  });
+
+  it('joins a caller-supplied transaction instead of opening its own', async () => {
+    const prisma = new FakePrisma();
+    const service = await createService(prisma);
+    // If the primitive opened its own transaction it would call this; passing `tx` must not.
+    const open = vi.fn(prisma.$transaction);
+    prisma.$transaction = open;
+
+    const result = await service.postMovement(
+      { ...base, delta: 7, sourceDocument: 'ADJ-1' },
+      prisma,
+    );
+
+    expect(open).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ balanceBefore: 0, balanceAfter: 7 });
+    // The movement and balance landed in the client the caller passed, not a fresh one.
+    expect(prisma.movements).toHaveLength(1);
+    expect(onlyBalance(prisma)).toMatchObject({ quantity: 7 });
   });
 });

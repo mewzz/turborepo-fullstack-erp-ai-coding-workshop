@@ -45,6 +45,7 @@ model User {
   store        Store?   @relation(fields: [storeId], references: [id])
   movements    StockMovement[]
   purchaseOrders PurchaseOrder[]
+  auditLogs    AuditLog[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -147,6 +148,31 @@ model IdempotencyKey {
   /// The id of the document the first call produced.
   documentId   String
   createdAt    DateTime @default(now())
+}
+
+/// Whether an auditable action committed or was rejected (NFR-03).
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+}
+
+/// An append-only audit record (NFR-03): the first auditable event is a manager stock adjustment.
+///
+/// Rows are immutable once written — there is no `updatedAt` and nothing in the system edits or
+/// deletes them. Read access is restricted by permission (enforced in the API, not the schema).
+model AuditLog {
+  id             String       @id @default(cuid())
+  /// The user who performed the action (NFR-03 actor).
+  actorId        String
+  actor          User         @relation(fields: [actorId], references: [id])
+  /// A machine-readable action name, e.g. "STOCK_ADJUSTMENT".
+  action         String
+  /// The document the action acted on, e.g. a stock-adjustment reference. Free text at this layer.
+  sourceDocument String
+  outcome        AuditOutcome
+  createdAt      DateTime     @default(now())
+
+  @@index([createdAt])
 }
 
 /// A goods supplier a purchase order can reference.
