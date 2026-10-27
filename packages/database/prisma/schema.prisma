@@ -29,6 +29,7 @@ model Store {
   movements StockMovement[]
   balances  StockBalance[]
   purchaseOrders PurchaseOrder[]
+  receipts  GoodsReceipt[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -46,6 +47,7 @@ model User {
   movements    StockMovement[]
   purchaseOrders PurchaseOrder[]
   auditLogs    AuditLog[]
+  receipts     GoodsReceipt[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -66,6 +68,7 @@ model Product {
   movements StockMovement[]
   balances  StockBalance[]
   orderLines PurchaseOrderLine[]
+  receiptLines GoodsReceiptLine[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -227,6 +230,7 @@ model PurchaseOrder {
   /// Mandatory reason captured on reject or cancel (PO-03/04); null otherwise.
   reason String?
   lines  PurchaseOrderLine[]
+  receipts GoodsReceipt[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -247,4 +251,39 @@ model PurchaseOrderLine {
   quantity        Int
 
   @@unique([purchaseOrderId, productId])
+}
+
+/// A confirmed goods receipt against a purchase order (GR-03). Immutable: nothing edits or deletes
+/// it (GR-05). The stock it added lives in the ledger as GOODS_RECEIPT movements whose
+/// sourceDocument is this receipt's number.
+model GoodsReceipt {
+  id     String @id @default(cuid())
+  /// Human-facing document number, unique org-wide, e.g. "GR-0001".
+  number String @unique
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  /// The order's destination store, copied so the receipt stays self-describing.
+  storeId String
+  store   Store @relation(fields: [storeId], references: [id])
+  receivedById String
+  receivedBy   User @relation(fields: [receivedById], references: [id])
+  lines GoodsReceiptLine[]
+  receivedAt DateTime @default(now())
+
+  @@index([purchaseOrderId])
+}
+
+/// A received quantity for one product on a receipt. Zero-quantity lines are not stored.
+model GoodsReceiptLine {
+  id             String @id @default(cuid())
+  goodsReceiptId String
+  goodsReceipt   GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product @relation(fields: [productId], references: [id])
+  /// Snapshot of the product name at receipt time.
+  productName    String
+  /// Whole units, strictly positive.
+  quantity       Int
+
+  @@unique([goodsReceiptId, productId])
 }
