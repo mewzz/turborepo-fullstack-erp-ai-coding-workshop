@@ -2,12 +2,14 @@ import { authContract } from './auth.js';
 import { healthContract } from './health.js';
 import { inventoryContract } from './inventory.js';
 import { productsContract } from './products.js';
+import { purchaseOrdersContract } from './purchase-orders.js';
 import { suppliersContract } from './suppliers.js';
 
 export * from './auth.js';
 export * from './health.js';
 export * from './inventory.js';
 export * from './products.js';
+export * from './purchase-orders.js';
 export * from './suppliers.js';
 
 /**
@@ -22,6 +24,7 @@ export const contract = {
   health: healthContract,
   inventory: inventoryContract,
   products: productsContract,
+  purchaseOrders: purchaseOrdersContract,
   suppliers: suppliersContract,
 };
 
