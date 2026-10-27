@@ -188,6 +188,35 @@ async function main() {
     });
   }
   console.log('Seeded 1 demo purchase order (PO-0001, draft).');
+
+  // A demo draft sale (T7) so the sales screen has something to confirm. Re-runnable: created once,
+  // then left alone (confirming it on a re-seed would double-count the ledger). Staff B01 sells two
+  // of SKU001 from store B01, which opens with 10 on hand, so the confirmation always has stock.
+  const staffB01 = await prisma.user.findUniqueOrThrow({ where: { email: 'staff_b01@erp.local' } });
+  const existingSale = await prisma.sale.findFirst({
+    where: { storeId: centralStoreId, createdById: staffB01.id, status: 'DRAFT' },
+  });
+  if (!existingSale) {
+    const sku001 = await prisma.product.findUniqueOrThrow({ where: { sku: 'SKU001' } });
+    await prisma.sale.create({
+      data: {
+        storeId: centralStoreId,
+        status: 'DRAFT',
+        createdById: staffB01.id,
+        lines: {
+          create: [
+            {
+              productId: sku001.id,
+              productName: sku001.name,
+              unitPrice: sku001.sellingPrice,
+              quantity: 2,
+            },
+          ],
+        },
+      },
+    });
+  }
+  console.log('Seeded 1 demo sale (draft).');
 }
 
 try {

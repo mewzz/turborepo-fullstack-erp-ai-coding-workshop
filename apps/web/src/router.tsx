@@ -5,6 +5,7 @@ import { LoginPage } from '@/routes/login';
 import { ProductsPage } from '@/routes/products';
 import { PurchaseOrdersPage } from '@/routes/purchase-orders';
 import { RootLayout } from '@/routes/root-layout';
+import { SalesPage } from '@/routes/sales';
 import { SuppliersPage } from '@/routes/suppliers';
 
 export const router = createBrowserRouter([
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
           { path: 'products', element: <ProductsPage /> },
           { path: 'suppliers', element: <SuppliersPage /> },
           { path: 'purchase-orders', element: <PurchaseOrdersPage /> },
+          { path: 'sales', element: <SalesPage /> },
         ],
       },
     ],

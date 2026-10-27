@@ -7,6 +7,7 @@ const navItems = [
   { to: '/products', label: 'สินค้า', end: false },
   { to: '/suppliers', label: 'ผู้จัดจำหน่าย', end: false },
   { to: '/purchase-orders', label: 'ใบสั่งซื้อ', end: false },
+  { to: '/sales', label: 'การขาย', end: false },
 ];
 
 export function RootLayout() {

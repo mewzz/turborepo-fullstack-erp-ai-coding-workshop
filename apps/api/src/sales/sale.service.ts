@@ -178,7 +178,9 @@ export class SaleService {
         throw new ORPCError('CONFLICT', { message: `${MESSAGES.shortStock}: ${names}` });
       }
 
-      const [sequence] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('sale_number_seq') AS n`;
+      const [sequence] = await tx.$queryRaw<
+        { n: bigint }[]
+      >`SELECT nextval('sale_number_seq') AS n`;
       const number = formatNumber(sequence!.n);
 
       const updated = await tx.sale.update({

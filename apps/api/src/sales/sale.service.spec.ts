@@ -45,7 +45,10 @@ function fakePrisma(partial: Record<string, unknown>) {
   return prisma;
 }
 
-async function createService(prisma: Record<string, unknown>, movements?: Partial<StockMovementService>) {
+async function createService(
+  prisma: Record<string, unknown>,
+  movements?: Partial<StockMovementService>,
+) {
   const moduleRef = await Test.createTestingModule({
     providers: [
       SaleService,
@@ -67,7 +70,9 @@ describe('SaleService.create', () => {
       product: {
         findMany: vi
           .fn()
-          .mockResolvedValue([{ id: 'p1', name: 'สินค้า 001', sellingPrice: '45.00', active: true }]),
+          .mockResolvedValue([
+            { id: 'p1', name: 'สินค้า 001', sellingPrice: '45.00', active: true },
+          ]),
       },
       sale: { create },
     });
@@ -97,7 +102,9 @@ describe('SaleService.create', () => {
       product: {
         findMany: vi
           .fn()
-          .mockResolvedValue([{ id: 'p1', name: 'สินค้า 001', sellingPrice: '45.00', active: false }]),
+          .mockResolvedValue([
+            { id: 'p1', name: 'สินค้า 001', sellingPrice: '45.00', active: false },
+          ]),
       },
       sale: { create: vi.fn() },
     });
@@ -120,8 +127,20 @@ describe('SaleService.confirm', () => {
         findUnique: vi.fn().mockResolvedValue(
           saleRow({
             lines: [
-              { id: 'l1', productId: 'p1', productName: 'สินค้า 001', unitPrice: '45.00', quantity: 3 },
-              { id: 'l2', productId: 'p2', productName: 'สินค้า 002', unitPrice: '30.00', quantity: 5 },
+              {
+                id: 'l1',
+                productId: 'p1',
+                productName: 'สินค้า 001',
+                unitPrice: '45.00',
+                quantity: 3,
+              },
+              {
+                id: 'l2',
+                productId: 'p2',
+                productName: 'สินค้า 002',
+                unitPrice: '30.00',
+                quantity: 5,
+              },
             ],
           }),
         ),
@@ -147,7 +166,9 @@ describe('SaleService.confirm', () => {
     const postMovement = vi.fn().mockResolvedValue({});
     const update = vi
       .fn()
-      .mockResolvedValue(saleRow({ status: 'CONFIRMED', number: 'SALE-0001', confirmedAt: new Date() }));
+      .mockResolvedValue(
+        saleRow({ status: 'CONFIRMED', number: 'SALE-0001', confirmedAt: new Date() }),
+      );
     const idempotencyCreate = vi.fn();
     const prisma = fakePrisma({
       idempotencyKey: { findUnique: vi.fn().mockResolvedValue(null), create: idempotencyCreate },
@@ -163,12 +184,19 @@ describe('SaleService.confirm', () => {
     expect(result.status).toBe('CONFIRMED');
     expect(result.number).toBe('SALE-0001');
     expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'CONFIRMED', number: 'SALE-0001' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'CONFIRMED', number: 'SALE-0001' }),
+      }),
     );
     expect(idempotencyCreate).toHaveBeenCalled();
     expect(postMovement).toHaveBeenCalledTimes(1);
     const [movementInput, tx] = postMovement.mock.calls[0]!;
-    expect(movementInput).toMatchObject({ productId: 'p1', storeId: 'st1', delta: -3, type: 'SALE' });
+    expect(movementInput).toMatchObject({
+      productId: 'p1',
+      storeId: 'st1',
+      delta: -3,
+      type: 'SALE',
+    });
     expect(tx).toBe(prisma); // posted inside the sale's transaction
   });
 
@@ -206,7 +234,9 @@ describe('SaleService.confirm', () => {
     });
     const service = await createService(prisma, { postMovement });
 
-    await expect(service.confirm(confirmInput, employee)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(service.confirm(confirmInput, employee)).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
   });
 
   it('refuses to confirm an already-confirmed sale: terminal, never re-sold (SAL-04)', async () => {
@@ -214,7 +244,9 @@ describe('SaleService.confirm', () => {
     const prisma = fakePrisma({
       idempotencyKey: { findUnique: vi.fn().mockResolvedValue(null) },
       sale: {
-        findUnique: vi.fn().mockResolvedValue(saleRow({ status: 'CONFIRMED', number: 'SALE-0001' })),
+        findUnique: vi
+          .fn()
+          .mockResolvedValue(saleRow({ status: 'CONFIRMED', number: 'SALE-0001' })),
       },
       stockBalance: { findMany: vi.fn() },
     });
