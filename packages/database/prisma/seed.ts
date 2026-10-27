@@ -40,6 +40,15 @@ const suppliers = [
   },
 ];
 
+// Opening stock per store (TOR §8). Quantities are whole units; the reorder threshold is 3 for
+// every (product, store). B01 opens with SKU001=10, SKU002=5, SKU003=0; B02 opens all zero.
+// The ledger is the source of truth, so a nonzero opening also writes an OPENING movement.
+const REORDER_THRESHOLD = 3;
+const openingStock: Record<string, Record<string, number>> = {
+  B01: { SKU001: 10, SKU002: 5, SKU003: 0 },
+  B02: { SKU001: 0, SKU002: 0, SKU003: 0 },
+};
+
 async function main() {
   const storesByCode = new Map<string, string>();
   for (const store of stores) {
@@ -86,6 +95,59 @@ async function main() {
   }
 
   console.log(`Seeded ${products.length} products and ${suppliers.length} suppliers.`);
+
+  // Opening stock. Re-runnable: a per-(product, store) upsert keyed on the unique pair, and an
+  // OPENING movement only when there isn't one yet, so re-seeding never double-counts the ledger.
+  const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@erp.local' } });
+  const productsBySku = new Map<string, string>();
+  for (const product of products) {
+    const row = await prisma.product.findUniqueOrThrow({ where: { sku: product.sku } });
+    productsBySku.set(product.sku, row.id);
+  }
+
+  let balanceCount = 0;
+  for (const [storeCode, quantities] of Object.entries(openingStock)) {
+    const storeId = storesByCode.get(storeCode);
+    if (!storeId) throw new Error(`Unknown store code "${storeCode}" in opening stock`);
+    for (const [sku, quantity] of Object.entries(quantities)) {
+      const productId = productsBySku.get(sku);
+      if (!productId) throw new Error(`Unknown SKU "${sku}" in opening stock`);
+
+      // `quantity` is a derived balance, so it is set only when the row is first created. On a
+      // re-seed we refresh the threshold (configuration) but never reset a quantity that real
+      // movements may have changed — resetting it would break INV-03 reconciliation.
+      const existing = await prisma.stockBalance.findUnique({
+        where: { productId_storeId: { productId, storeId } },
+      });
+      if (existing) {
+        await prisma.stockBalance.update({
+          where: { id: existing.id },
+          data: { reorderThreshold: REORDER_THRESHOLD },
+        });
+      } else {
+        await prisma.stockBalance.create({
+          data: { productId, storeId, quantity, reorderThreshold: REORDER_THRESHOLD, version: 0 },
+        });
+        if (quantity > 0) {
+          await prisma.stockMovement.create({
+            data: {
+              productId,
+              storeId,
+              delta: quantity,
+              balanceBefore: 0,
+              balanceAfter: quantity,
+              type: 'OPENING',
+              sourceDocument: 'OPENING',
+              actorId: admin.id,
+            },
+          });
+        }
+      }
+      balanceCount++;
+    }
+  }
+
+  console.log(`Seeded ${balanceCount} stock balances (threshold ${REORDER_THRESHOLD}).`);
 }
 
 try {
