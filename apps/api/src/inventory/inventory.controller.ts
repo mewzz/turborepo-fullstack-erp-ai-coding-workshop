@@ -1,8 +1,9 @@
 import { Controller } from '@nestjs/common';
 import { contract, type StockSearchResult, type User } from '@erp/contracts';
 import { Implement, implement } from '@orpc/nest';
-import { CurrentUser } from '../auth/auth.decorators.js';
+import { CurrentUser, Roles } from '../auth/auth.decorators.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { StockAdjustmentService } from './stock-adjustment.service.js';
 
 /** The `StockBalance` row shape the search reads, with its product and store joined in. */
 type BalanceRow = {
@@ -31,7 +32,10 @@ function toSearchResult(row: BalanceRow): StockSearchResult {
 
 @Controller()
 export class InventoryController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly adjustments: StockAdjustmentService,
+  ) {}
 
   @Implement(contract.inventory.search)
   search(@CurrentUser() user: User) {
@@ -69,5 +73,14 @@ export class InventoryController {
 
       return rows.map(toSearchResult);
     });
+  }
+
+  // Only a manager may correct stock (INV-05); the guard rejects every other role with 403.
+  @Roles('MANAGER')
+  @Implement(contract.inventory.adjust)
+  adjust(@CurrentUser() user: User) {
+    return implement(contract.inventory.adjust).handler(({ input }) =>
+      this.adjustments.adjust(input, user),
+    );
   }
 }

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { to: '/', label: 'หน้าแรก', end: true },
   { to: '/products', label: 'สินค้า', end: false },
+  { to: '/stock', label: 'สต็อก', end: false },
   { to: '/suppliers', label: 'ผู้จัดจำหน่าย', end: false },
   { to: '/purchase-orders', label: 'ใบสั่งซื้อ', end: false },
 ];

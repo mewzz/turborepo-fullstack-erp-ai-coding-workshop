@@ -4,6 +4,7 @@ import { call } from '@orpc/server';
 import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../database/prisma.service.js';
 import { InventoryController } from './inventory.controller.js';
+import { StockAdjustmentService } from './stock-adjustment.service.js';
 
 function balanceRow(over: Partial<Record<string, unknown>> = {}) {
   return {
@@ -17,15 +18,27 @@ function balanceRow(over: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-async function createController(findMany: ReturnType<typeof vi.fn>) {
+async function createController(
+  findMany: ReturnType<typeof vi.fn>,
+  adjust: ReturnType<typeof vi.fn> = vi.fn(),
+) {
   const moduleRef = await Test.createTestingModule({
     controllers: [InventoryController],
-    providers: [{ provide: PrismaService, useValue: { stockBalance: { findMany } } }],
+    providers: [
+      { provide: PrismaService, useValue: { stockBalance: { findMany } } },
+      { provide: StockAdjustmentService, useValue: { adjust } },
+    ],
   }).compile();
   return moduleRef.get(InventoryController);
 }
 
 const admin: User = { id: 'u1', email: 'admin@erp.local', name: 'Admin', role: 'ADMINISTRATOR' };
+const manager: User = {
+  id: 'u3',
+  email: 'manager01@erp.local',
+  name: 'Manager One',
+  role: 'MANAGER',
+};
 const employee: User = {
   id: 'u2',
   email: 'staff@erp.local',
@@ -119,5 +132,53 @@ describe('InventoryController.search', () => {
 
     await expect(call(controller.search(unassigned), {})).resolves.toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('InventoryController.adjust', () => {
+  const adjustInput = {
+    productId: 'p1',
+    storeId: 's1',
+    direction: 'DECREASE' as const,
+    quantity: 4,
+    reason: 'นับสต็อกใหม่',
+  };
+
+  it('delegates a valid adjustment to the service with the signed-in manager', async () => {
+    const adjust = vi.fn().mockResolvedValue({
+      movementId: 'm1',
+      productId: 'p1',
+      storeId: 's1',
+      balanceBefore: 10,
+      balanceAfter: 6,
+    });
+    const controller = await createController(vi.fn(), adjust);
+
+    await expect(call(controller.adjust(manager), adjustInput)).resolves.toMatchObject({
+      balanceBefore: 10,
+      balanceAfter: 6,
+    });
+    expect(adjust).toHaveBeenCalledWith(adjustInput, manager);
+  });
+
+  it('surfaces an over-reduction rejection from the service', async () => {
+    const adjust = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('สต็อกคงเหลือติดลบไม่ได้'), { code: 'CONFLICT' }));
+    const controller = await createController(vi.fn(), adjust);
+
+    await expect(
+      call(controller.adjust(manager), { ...adjustInput, quantity: 999 }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('rejects input with a blank reason before reaching the service (INV-05)', async () => {
+    const adjust = vi.fn();
+    const controller = await createController(vi.fn(), adjust);
+
+    await expect(
+      call(controller.adjust(manager), { ...adjustInput, reason: '   ' }),
+    ).rejects.toThrow();
+    expect(adjust).not.toHaveBeenCalled();
   });
 });

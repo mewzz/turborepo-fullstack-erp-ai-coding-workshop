@@ -201,4 +201,30 @@ describe('StockMovementService.postMovement', () => {
     expect(balance.quantity).toBe(movedSum);
     expect(balance.quantity).toBeGreaterThanOrEqual(0);
   });
+
+  it('joins a caller-supplied transaction instead of opening its own', async () => {
+    const prisma = new FakePrisma();
+    const service = await createService(prisma);
+    // If the primitive opened its own transaction it would call this; passing `tx` must not.
+    let opened = 0;
+    const original = prisma.$transaction;
+    prisma.$transaction = async <T>(fn: (tx: FakePrisma) => Promise<T>): Promise<T> => {
+      opened++;
+      return original(fn);
+    };
+    const callerTx = prisma as unknown as NonNullable<
+      Parameters<StockMovementService['postMovement']>[1]
+    >;
+
+    const result = await service.postMovement(
+      { ...base, delta: 7, sourceDocument: 'ADJ-1' },
+      callerTx,
+    );
+
+    expect(opened).toBe(0);
+    expect(result).toMatchObject({ balanceBefore: 0, balanceAfter: 7 });
+    // The movement and balance landed in the client the caller passed, not a fresh one.
+    expect(prisma.movements).toHaveLength(1);
+    expect(onlyBalance(prisma)).toMatchObject({ quantity: 7 });
+  });
 });
